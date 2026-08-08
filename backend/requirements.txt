@@ -6,4 +6,4 @@ alembic==1.14.0
 python-multipart==0.0.19
 Pillow==11.0.0
 PyYAML==6.0.2
-
+ultralytics==8.3.40

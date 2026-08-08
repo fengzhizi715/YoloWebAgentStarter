@@ -40,6 +40,22 @@
 - Ruff and Pyflakes checks: passed.
 - Scope audit: Starter imports contain no Enterprise runtime modules; training/model and Enterprise-only capabilities remain outside this slice.
 
+### Phase 4: 本地 YOLO 训练垂直切片
+
+- **Status:** complete
+- Actions taken:
+  - 新增 `training_profiles`、`training_tasks` 和 `0002_training_baseline`，没有引入 ModelVersion、Evaluation、Workflow、Agent 或用户字段。
+  - 以 Starter 自己的 YOLO 目录导出复用持久化 train/val/test split；缺少 train 或 val 时拒绝创建训练任务。
+  - 实现 detect/segment 权重族校验，支持 `yolo11n.pt`、`yolo11n-seg.pt` 等 Ultralytics 权重引用。
+  - 实现单进程 FIFO 任务队列、subprocess runner、进程组停止、服务重启孤儿任务恢复和受管训练产物路径。
+  - 实现实时日志、epoch 进度、results.csv 指标读取、训练 summary 以及 best.pt / last.pt 下载 API。
+  - 接入训练配置、任务列表、状态进度、停止按钮、日志详情和 checkpoint 下载的前端页面。
+- Verification:
+  - 后端训练 fake-runner smoke 覆盖完成、checkpoint、summary、权重族拒绝、缺失 split 和停止；Phase 2/3 + Phase 4 共 10 项后端测试通过。
+  - 前端测试和 Vite production build 通过；Ruff/Pyflakes 通过。
+- Exit gate:
+  - 用户可从 Starter 数据集选择 train/val split，创建本地 detect/segment 训练任务，并获得 best.pt / last.pt。
+
 ### Plan Setup: 创建 Starter 迁移计划
 
 - **Status:** complete

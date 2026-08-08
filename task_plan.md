@@ -46,7 +46,7 @@ Starter 提供完整的基础闭环；Enterprise 提供自动化、协作、诊�
 
 ## Current Phase
 
-正在执行 Phase 2，并在其退出门槛通过后连续执行 Phase 3。当前实施批次为：干净 Git 与项目骨架 → SQLite baseline → 最小 FastAPI/Vite 启动 → 数据集/类别/图片/标注 API → bbox/polygon 标注 UI → validation 与 YOLO 往返 → 测试和端到端验收。
+Phase 4 已完成，下一阶段进入 Phase 5：模型管理与 PT / ONNX 垂直切片。
 
 ## Phases
 
@@ -94,15 +94,15 @@ Starter 提供完整的基础闭环；Enterprise 提供自动化、协作、诊�
 
 ### Phase 4: 本地 YOLO 训练垂直切片
 
-- [ ] 迁移训练配置、任务队列、runner、进程控制、日志、checkpoint 和训练摘要。
-- [ ] 清理 training runtime 对 Workflow、Evaluation 和 Iteration 的直接依赖。
-- [ ] 保留 TaskType 与权重族匹配校验。
-- [ ] 迁移训练中心、训练任务列表、训练任务详情和日志查看。
-- [ ] 移除 Agent 入口、自动评估触发和闭环跟踪入口。
-- [ ] 验证任务创建、排队、运行、停止、失败恢复和产物路径。
-- [ ] 为 Phase 1 确认的每个 TaskType 补齐训练测试。
+- [x] 迁移训练配置、任务队列、runner、进程控制、日志、checkpoint 和训练摘要。
+- [x] 清理 training runtime 对 Workflow、Evaluation 和 Iteration 的直接依赖。
+- [x] 保留 TaskType 与权重族匹配校验。
+- [x] 迁移训练中心、训练任务列表、训练任务详情和日志查看。
+- [x] 移除 Agent 入口、自动评估触发和闭环跟踪入口。
+- [x] 验证任务创建、排队、运行、停止、失败恢复和产物路径。
+- [x] 为 Phase 1 确认的每个 TaskType 补齐训练测试。
 - **Exit gate:** 用户可从 Starter 数据集发起本地训练并获得 best.pt / last.pt。
-- **Status:** pending
+- **Status:** complete
 
 ### Phase 5: 模型管理与 PT / ONNX 垂直切片
 

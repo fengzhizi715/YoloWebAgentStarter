@@ -4,8 +4,9 @@ import io
 import math
 import posixpath
 import re
+import shutil
 import zipfile
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 import yaml
 from sqlalchemy import select
@@ -193,6 +194,92 @@ def export_dataset(session: Session, storage: Storage, dataset_id: str) -> tuple
                     label_lines.append(f"{next(item.class_index for item in classes if item.id == annotation.class_id)} {normalized}")
             archive.writestr(f"labels/{image.split}/{export_stem}.txt", "\n".join(label_lines) + ("\n" if label_lines else ""))
     return output.getvalue(), f"{dataset.name.replace(' ', '_') or 'dataset'}.zip"
+
+
+def export_dataset_directory(session: Session, storage: Storage, dataset_id: str, target_dir: Path) -> dict[str, object]:
+    """Materialize a training-ready YOLO directory using persisted image splits."""
+
+    get_dataset(session, dataset_id)
+    classes = list(
+        session.scalars(
+            select(ClassLabel).where(ClassLabel.dataset_id == dataset_id).order_by(ClassLabel.class_index)
+        )
+    )
+    images = list(
+        session.scalars(
+            select(ImageItem).where(ImageItem.dataset_id == dataset_id).order_by(ImageItem.split, ImageItem.id)
+        )
+    )
+    annotations = list(
+        session.scalars(
+            select(Annotation).where(Annotation.dataset_id == dataset_id).order_by(Annotation.image_id, Annotation.id)
+        )
+    )
+    target = Path(target_dir).expanduser().resolve()
+    target.mkdir(parents=True, exist_ok=True)
+    class_indexes = {item.id: item.class_index for item in classes}
+    annotations_by_image: dict[str, list[Annotation]] = {}
+    for annotation in annotations:
+        annotations_by_image.setdefault(annotation.image_id, []).append(annotation)
+    counts = {"train": 0, "val": 0, "test": 0}
+    label_count = 0
+
+    for image in images:
+        if image.split not in counts:
+            raise ValidationError("invalid_image_split", f"Unsupported image split: {image.split}.")
+        source = storage.image_path(dataset_id, image.storage_name)
+        if not source.is_file():
+            raise ValidationError("image_file_missing", f"Managed image file is missing: {image.file_name}.")
+        stem = f"{image.id}_{PurePosixPath(image.file_name).stem}"
+        image_destination = target / "images" / image.split / f"{stem}{source.suffix.lower()}"
+        label_destination = target / "labels" / image.split / f"{stem}.txt"
+        image_destination.parent.mkdir(parents=True, exist_ok=True)
+        label_destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, image_destination)
+        lines: list[str] = []
+        for annotation in annotations_by_image.get(image.id, []):
+            class_index = class_indexes.get(annotation.class_id)
+            if class_index is None:
+                raise ValidationError("annotation_class_mismatch", "Annotation class does not belong to this dataset.")
+            if annotation.type == "bbox":
+                center_x = ((annotation.x or 0) + (annotation.width or 0) / 2) / image.width
+                center_y = ((annotation.y or 0) + (annotation.height or 0) / 2) / image.height
+                lines.append(
+                    f"{class_index} {center_x:.8f} {center_y:.8f} {(annotation.width or 0) / image.width:.8f} {(annotation.height or 0) / image.height:.8f}"
+                )
+            elif annotation.type == "polygon":
+                normalized = " ".join(
+                    f"{point[0] / image.width:.8f} {point[1] / image.height:.8f}"
+                    for point in (annotation.polygon or [])
+                )
+                lines.append(f"{class_index} {normalized}")
+            else:
+                raise ValidationError("unsupported_annotation_type", "Starter training supports bbox and polygon annotations only.")
+        if lines:
+            label_count += len(lines)
+        label_destination.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+        counts[image.split] += 1
+
+    data_yaml = target / "data.yaml"
+    data_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "path": str(target),
+                "train": "images/train",
+                "val": "images/val",
+                "test": "images/test",
+                "names": [item.name for item in classes],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "root": str(target),
+        "data_yaml": str(data_yaml),
+        "counts": counts,
+        "label_count": label_count,
+    }
 
 
 def import_dataset(

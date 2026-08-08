@@ -51,5 +51,6 @@ class Settings:
         self.import_root.mkdir(parents=True, exist_ok=True)
         (self.data_dir / "datasets").mkdir(parents=True, exist_ok=True)
         (self.data_dir / "exports").mkdir(parents=True, exist_ok=True)
+        (self.data_dir / "runs" / "training").mkdir(parents=True, exist_ok=True)
+        (self.data_dir / "models").mkdir(parents=True, exist_ok=True)
         (self.data_dir / "tmp").mkdir(parents=True, exist_ok=True)
-

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -28,6 +28,8 @@ class Dataset(Base, TimestampMixin):
     classes: Mapped[list["ClassLabel"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
     images: Mapped[list["ImageItem"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
     annotations: Mapped[list["Annotation"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
+    training_profiles: Mapped[list["TrainingProfile"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
+    training_tasks: Mapped[list["TrainingTask"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
 
 
 class ClassLabel(Base, TimestampMixin):
@@ -87,3 +89,74 @@ class Annotation(Base, TimestampMixin):
     image: Mapped[ImageItem] = relationship(back_populates="annotations")
     class_label: Mapped[ClassLabel] = relationship(back_populates="annotations")
 
+
+class TrainingProfile(Base, TimestampMixin):
+    __tablename__ = "training_profiles"
+    __table_args__ = (CheckConstraint("task_type IN ('detect', 'segment')", name="ck_training_profile_task_type"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    model_name: Mapped[str] = mapped_column(String(255), default="yolo11n.pt", nullable=False)
+    task_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    epochs: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    img_size: Mapped[int] = mapped_column(Integer, default=640, nullable=False)
+    batch_size: Mapped[int] = mapped_column(Integer, default=16, nullable=False)
+    device: Mapped[str] = mapped_column(String(64), default="auto", nullable=False)
+    workers: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    val_ratio: Mapped[float] = mapped_column(Float, default=0.2, nullable=False)
+    seed: Mapped[int] = mapped_column(Integer, default=42, nullable=False)
+    optimizer: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lr0: Mapped[float | None] = mapped_column(Float, nullable=True)
+    patience: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    dataset: Mapped[Dataset] = relationship(back_populates="training_profiles")
+
+
+class TrainingTask(Base, TimestampMixin):
+    __tablename__ = "training_tasks"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'running', 'completed', 'failed', 'stopped')", name="ck_training_task_status"),
+        CheckConstraint("task_type IN ('detect', 'segment')", name="ck_training_task_type"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), index=True, nullable=False)
+    profile_id: Mapped[str | None] = mapped_column(ForeignKey("training_profiles.id", ondelete="SET NULL"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True, nullable=False)
+    task_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    model_path: Mapped[str] = mapped_column(Text, nullable=False)
+    epochs: Mapped[int] = mapped_column(Integer, nullable=False)
+    img_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    device: Mapped[str] = mapped_column(String(64), nullable=False)
+    workers: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    val_ratio: Mapped[float] = mapped_column(Float, default=0.2, nullable=False)
+    seed: Mapped[int] = mapped_column(Integer, default=42, nullable=False)
+    optimizer: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lr0: Mapped[float | None] = mapped_column(Float, nullable=True)
+    patience: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    config_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    command_args_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    command_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    export_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data_yaml_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    run_dir: Mapped[str | None] = mapped_column(Text, nullable=True)
+    logs_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    best_model_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_model_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    progress_epoch: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    progress_total_epochs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    progress_percent: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    metrics_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stop_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    dataset: Mapped[Dataset] = relationship(back_populates="training_tasks")
+    profile: Mapped[TrainingProfile | None] = relationship()

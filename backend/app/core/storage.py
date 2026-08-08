@@ -26,6 +26,8 @@ class Storage:
         self.import_root = import_root.resolve()
         self.datasets_dir = self.data_dir / "datasets"
         self.exports_dir = self.data_dir / "exports"
+        self.training_dir = self.data_dir / "runs" / "training"
+        self.models_dir = self.data_dir / "models"
         self.tmp_dir = self.data_dir / "tmp"
 
     def dataset_dir(self, dataset_id: str) -> Path:
@@ -94,3 +96,14 @@ class Storage:
             raise ValidationError("unsafe_path", "Export path escapes the managed export directory.")
         return candidate
 
+    def training_task_dir(self, task_id: str) -> Path:
+        candidate = (self.training_dir / task_id).resolve()
+        if not _is_within(candidate, self.training_dir.resolve()):
+            raise ValidationError("unsafe_path", "Training task path escapes the managed training directory.")
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+
+    def remove_training_task(self, task_id: str) -> None:
+        directory = self.training_task_dir(task_id)
+        if directory.exists():
+            shutil.rmtree(directory)

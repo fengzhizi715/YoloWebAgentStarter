@@ -78,3 +78,50 @@ export interface ImagePage {
   items: ImageItem[];
   total: number;
 }
+
+export type TrainingStatus = "pending" | "running" | "completed" | "failed" | "stopped";
+
+export interface TrainingTask {
+  id: string;
+  dataset_id: string;
+  profile_id: string | null;
+  name: string;
+  status: TrainingStatus;
+  task_type: TaskType;
+  model_name: string;
+  model_path: string;
+  epochs: number;
+  img_size: number;
+  batch_size: number;
+  device: string;
+  workers: number;
+  val_ratio: number;
+  seed: number;
+  optimizer: string | null;
+  lr0: number | null;
+  patience: number | null;
+  command_preview: string | null;
+  export_path: string | null;
+  data_yaml_path: string | null;
+  run_dir: string | null;
+  logs_path: string | null;
+  summary_path: string | null;
+  best_model_path: string | null;
+  last_model_path: string | null;
+  progress_epoch: number;
+  progress_total_epochs: number;
+  progress_percent: number;
+  metrics_json: Record<string, number>;
+  error_message: string | null;
+  stop_requested: boolean;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface TrainingLog {
+  task_id: string;
+  logs: string;
+  line_count: number;
+}

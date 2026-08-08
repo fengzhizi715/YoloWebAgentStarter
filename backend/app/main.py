@@ -11,6 +11,7 @@ from app.core.config import Settings
 from app.core.database import Database
 from app.core.migrations import upgrade_database
 from app.core.storage import Storage
+from app.training.runtime.queue import training_queue
 
 
 def create_app(settings: Settings | None = None, *, run_migrations: bool = True) -> FastAPI:
@@ -23,6 +24,8 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
     async def lifespan(app: FastAPI):
         if run_migrations:
             upgrade_database(resolved.project_root / "backend", resolved.database_url)
+        training_queue.configure(database.session_factory)
+        training_queue.recover_orphaned()
         yield
         database.dispose()
 
@@ -43,4 +46,3 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
 
 
 app = create_app()
-

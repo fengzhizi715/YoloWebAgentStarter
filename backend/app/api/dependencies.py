@@ -6,6 +6,8 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.training.service import TrainingService
+from app.training.runtime.queue import training_queue
 
 
 def get_session(request: Request) -> Iterator[Session]:
@@ -19,3 +21,6 @@ def get_settings(request: Request) -> Settings:
 def get_storage(request: Request):
     return request.app.state.storage
 
+
+def get_training_service(request: Request) -> TrainingService:
+    return TrainingService(request.app.state.database.session_factory, request.app.state.storage, training_queue)

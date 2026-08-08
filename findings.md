@@ -21,6 +21,14 @@
 - 前端采用独立的轻量 React/Vite 壳和 Konva 标注画布，不迁移 Enterprise 的 AuthProvider、License gating、Agent、SAM、OBB、Pose 或大体量全局样式。
 - 训练和模型属于 Phase 4/5；本轮只在产品导航中展示后续阶段状态，不创建伪 API 或不可用操作。
 
+### Phase 4 实施发现
+
+- Starter 训练不能直接迁移源项目的 `TrainingTask`，因为源模型混入 Workflow、Evaluation、Iteration、Auth/RBAC、ModelVersion 和部署字段；Starter 使用独立的最小 training profile/task 表。
+- 训练数据必须从 Starter 受管图片和绝对像素标注重新物化为任务目录下的 YOLO 数据集，并沿用 `image_items.split`，不能在训练启动时偷偷随机覆盖 split。
+- Ultralytics 运行时只通过可替换的命令前缀启动；默认定位仓库 `.venv/bin/yolo`，也支持 `YWA_YOLO_EXECUTABLE` 用于确定性 smoke test 和受控环境。
+- 本地单用户版本采用单进程 FIFO 队列；进程组停止、数据库 `stop_requested` 标记和启动时 running→failed 恢复共同覆盖服务重启与停止竞态。
+- Phase 4 完成条件要求 `best.pt` 和 `last.pt` 同时存在；进程返回 0 但 checkpoint 缺失时任务仍标记 failed，避免产生不可用的“成功”任务。
+
 ### Phase 1 固定源快照
 
 - 源仓库：`/Users/tony/PycharmProjects/YoloWebAgent`
