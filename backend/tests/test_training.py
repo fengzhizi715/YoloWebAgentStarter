@@ -83,7 +83,7 @@ def prepared_dataset(client, task_type: str = "detect") -> tuple[str, str]:
 
 
 def wait_for_terminal(client, task_id: str) -> dict:
-    for _ in range(30):
+    for _ in range(100):
         task = client.get(f"/api/training/tasks/{task_id}").json()
         if task["status"] in {"completed", "failed", "stopped"}:
             return task
@@ -111,6 +111,75 @@ def test_training_task_runs_and_persists_checkpoints(client, tmp_path, monkeypat
     summary = client.get(f"/api/training/tasks/{task['id']}/summary")
     assert summary.status_code == 200
     assert summary.json()["status"] == "completed"
+    models = client.get(f"/api/models?dataset_id={task['dataset_id']}").json()
+    assert models["total"] == 2
+    best = next(item for item in models["items"] if item["artifact_type"] == "best")
+    assert client.get(f"/api/models/{best['id']}/download").content == b"fake best"
+
+
+def test_model_metadata_and_onnx_lifecycle(client, tmp_path, monkeypatch):
+    executable = tmp_path / "fake-yolo"
+    fake_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+    dataset_id, _ = prepared_dataset(client)
+    response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "name": "model-lifecycle", "model": "yolo11n.pt", "epochs": 1, "batch_size": 1},
+    )
+    wait_for_terminal(client, response.json()["id"])
+    models = client.get(f"/api/models?dataset_id={dataset_id}").json()["items"]
+    best = next(item for item in models if item["artifact_type"] == "best")
+    calls: list[tuple[str, str]] = []
+
+    def fake_export(source, destination):
+        calls.append((str(source), str(destination)))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"fake onnx")
+        return destination
+
+    monkeypatch.setattr("app.models.onnx.export_fp32_onnx", fake_export)
+    exported = client.post(f"/api/models/{best['id']}/export-onnx")
+    assert exported.status_code == 200, exported.text
+    exported_model = exported.json()
+    assert exported_model["format"] == "onnx"
+    assert client.get(f"/api/models/{exported_model['id']}/download").content == b"fake onnx"
+    again = client.post(f"/api/models/{best['id']}/export-onnx")
+    assert again.status_code == 200
+    assert again.json()["id"] == exported_model["id"]
+    assert len(calls) == 1
+
+    updated = client.patch(f"/api/models/{best['id']}", json={"name": "Renamed best", "notes": "smoke"})
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Renamed best"
+    archived = client.post(f"/api/models/{best['id']}/archive")
+    assert archived.status_code == 200
+    assert client.get(f"/api/models?dataset_id={dataset_id}").json()["total"] == 2
+    restored = client.post(f"/api/models/{best['id']}/restore")
+    assert restored.status_code == 200
+    assert restored.json()["status"] == "active"
+    assert client.delete(f"/api/models/{best['id']}").status_code == 204
+
+
+def test_onnx_export_failure_does_not_register_an_orphan(client, tmp_path, monkeypatch):
+    executable = tmp_path / "fake-yolo"
+    fake_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+    dataset_id, _ = prepared_dataset(client)
+    response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "name": "failed-export", "model": "yolo11n.pt", "epochs": 1, "batch_size": 1},
+    )
+    wait_for_terminal(client, response.json()["id"])
+    best = next(item for item in client.get(f"/api/models?dataset_id={dataset_id}").json()["items"] if item["artifact_type"] == "best")
+
+    def fail_export(source, destination):
+        raise RuntimeError("converter unavailable")
+
+    monkeypatch.setattr("app.models.onnx.export_fp32_onnx", fail_export)
+    exported = client.post(f"/api/models/{best['id']}/export-onnx")
+    assert exported.status_code == 422
+    assert exported.json()["error"]["code"] == "onnx_export_failed"
+    assert client.get(f"/api/models?dataset_id={dataset_id}").json()["total"] == 2
 
 
 def test_training_rejects_wrong_weight_family(client):

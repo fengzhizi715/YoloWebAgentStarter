@@ -103,6 +103,34 @@ class Storage:
         candidate.mkdir(parents=True, exist_ok=True)
         return candidate
 
+    def model_version_dir(self, model_id: str) -> Path:
+        candidate = (self.models_dir / model_id).resolve()
+        if not _is_within(candidate, self.models_dir.resolve()):
+            raise ValidationError("unsafe_path", "Model path escapes the managed model directory.")
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+
+    def managed_model_path(self, path: str | Path) -> Path:
+        candidate = Path(path).expanduser().resolve()
+        if not _is_within(candidate, self.models_dir.resolve()):
+            raise ValidationError("unsafe_path", "Model path must stay inside the managed model directory.")
+        return candidate
+
+    def copy_model_artifact(self, source: Path, model_id: str, file_name: str) -> Path:
+        source = source.expanduser().resolve()
+        if not source.is_file():
+            raise ValidationError("model_file_missing", "The model artifact does not exist on disk.")
+        destination = (self.model_version_dir(model_id) / Path(file_name).name).resolve()
+        if not _is_within(destination, self.model_version_dir(model_id).resolve()):
+            raise ValidationError("unsafe_path", "Model artifact path escapes the managed model directory.")
+        shutil.copy2(source, destination)
+        return destination
+
+    def remove_model_version(self, model_id: str) -> None:
+        directory = self.model_version_dir(model_id)
+        if directory.exists():
+            shutil.rmtree(directory)
+
     def remove_training_task(self, task_id: str) -> None:
         directory = self.training_task_dir(task_id)
         if directory.exists():

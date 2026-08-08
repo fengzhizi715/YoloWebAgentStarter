@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.models import TrainingTask
 from app.core.time import utc_now
+from app.core.storage import Storage
 from app.training.artifacts.checkpoints import checkpoint_paths
 from app.training.observability.log_store import TrainingLogStore
 from app.training.observability.metrics import TrainingMetricsParser
@@ -32,9 +33,10 @@ def resolve_yolo_command_prefix() -> list[str]:
 
 
 class TrainingRunner:
-    def __init__(self, session_factory: sessionmaker[Session], queue) -> None:
+    def __init__(self, session_factory: sessionmaker[Session], queue, storage: Storage | None = None) -> None:
         self.session_factory = session_factory
         self.queue = queue
+        self.storage = storage
         self.metrics_parser = TrainingMetricsParser()
 
     def run(self, task_id: str) -> None:
@@ -158,5 +160,13 @@ class TrainingRunner:
                 log_store.append(task.error_message)
             session.commit()
             dataset = task.dataset
+            if task.status == "completed" and self.storage is not None:
+                try:
+                    from app.models.service import ModelService
+
+                    registered = ModelService(self.storage).register_training_artifacts(session, task)
+                    log_store.append(f"Registered {len(registered)} model artifacts.")
+                except Exception as exc:
+                    log_store.append(f"Model artifact registration failed: {exc}")
             write_training_summary(task, dataset)
             session.commit()

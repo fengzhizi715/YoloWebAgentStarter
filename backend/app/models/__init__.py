@@ -1,0 +1,1 @@
+"""Starter model management domain."""

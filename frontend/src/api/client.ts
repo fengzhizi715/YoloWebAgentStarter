@@ -8,6 +8,7 @@ import type {
   TaskType,
   TrainingLog,
   TrainingTask,
+  ModelVersion,
   ValidationReport,
 } from "../types";
 
@@ -86,4 +87,12 @@ export const api = {
   stopTrainingTask: (taskId: string) => request<TrainingTask>(`/api/training/tasks/${taskId}/stop`, { method: "POST" }),
   getTrainingLogs: (taskId: string, tail = 200) => request<TrainingLog>(`/api/training/tasks/${taskId}/logs?tail=${tail}`),
   downloadCheckpointUrl: (taskId: string, checkpoint: "best" | "last") => apiUrl(`/api/training/tasks/${taskId}/checkpoints/${checkpoint}`),
+  listModels: (datasetId: string, includeArchived = true) => request<{ items: ModelVersion[]; total: number }>(`/api/models?dataset_id=${datasetId}&include_archived=${includeArchived}`),
+  getModel: (modelId: string) => request<ModelVersion>(`/api/models/${modelId}`),
+  updateModel: (modelId: string, payload: { name?: string; version?: string; notes?: string }) => request<ModelVersion>(`/api/models/${modelId}`, json(payload, "PATCH")),
+  archiveModel: (modelId: string) => request<ModelVersion>(`/api/models/${modelId}/archive`, { method: "POST" }),
+  restoreModel: (modelId: string) => request<ModelVersion>(`/api/models/${modelId}/restore`, { method: "POST" }),
+  deleteModel: (modelId: string) => request<void>(`/api/models/${modelId}`, { method: "DELETE" }),
+  exportModelOnnx: (modelId: string) => request<ModelVersion>(`/api/models/${modelId}/export-onnx`, { method: "POST" }),
+  downloadModelUrl: (modelId: string) => apiUrl(`/api/models/${modelId}/download`),
 };

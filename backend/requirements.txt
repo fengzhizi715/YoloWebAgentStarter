@@ -7,3 +7,8 @@ python-multipart==0.0.19
 Pillow==11.0.0
 PyYAML==6.0.2
 ultralytics==8.3.40
+onnx>=1.17.0
+onnxruntime==1.27.0
+onnxscript==0.7.0
+onnx_ir==0.2.1
+ml_dtypes==0.5.4

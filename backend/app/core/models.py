@@ -30,6 +30,7 @@ class Dataset(Base, TimestampMixin):
     annotations: Mapped[list["Annotation"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
     training_profiles: Mapped[list["TrainingProfile"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
     training_tasks: Mapped[list["TrainingTask"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
+    model_versions: Mapped[list["ModelVersion"]] = relationship(back_populates="dataset")
 
 
 class ClassLabel(Base, TimestampMixin):
@@ -160,3 +161,42 @@ class TrainingTask(Base, TimestampMixin):
 
     dataset: Mapped[Dataset] = relationship(back_populates="training_tasks")
     profile: Mapped[TrainingProfile | None] = relationship()
+    model_versions: Mapped[list["ModelVersion"]] = relationship(back_populates="training_task")
+
+
+class ModelVersion(Base, TimestampMixin):
+    __tablename__ = "model_versions"
+    __table_args__ = (
+        UniqueConstraint("training_task_id", "artifact_type", name="uq_model_version_training_artifact"),
+        CheckConstraint("source IN ('training_task', 'exported')", name="ck_model_version_source"),
+        CheckConstraint("artifact_type IN ('best', 'last', 'onnx')", name="ck_model_version_artifact_type"),
+        CheckConstraint("format IN ('pt', 'onnx')", name="ck_model_version_format"),
+        CheckConstraint("status IN ('active', 'archived')", name="ck_model_version_status"),
+        CheckConstraint("task_type IN ('detect', 'segment')", name="ck_model_version_task_type"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), default="v1", nullable=False)
+    dataset_id: Mapped[str | None] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"), index=True, nullable=True)
+    training_task_id: Mapped[str | None] = mapped_column(ForeignKey("training_tasks.id", ondelete="SET NULL"), index=True, nullable=True)
+    source_model_id: Mapped[str | None] = mapped_column(ForeignKey("model_versions.id", ondelete="SET NULL"), index=True, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), default="training_task", nullable=False)
+    artifact_type: Mapped[str] = mapped_column(String(32), default="best", nullable=False)
+    format: Mapped[str] = mapped_column(String(16), default="pt", nullable=False)
+    task_type: Mapped[str] = mapped_column(String(16), default="detect", nullable=False)
+    engine_type: Mapped[str] = mapped_column(String(32), default="ultralytics", nullable=False)
+    model_path: Mapped[str] = mapped_column(Text, nullable=False)
+    base_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True, nullable=False)
+    precision: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recall: Mapped[float | None] = mapped_column(Float, nullable=True)
+    map50: Mapped[float | None] = mapped_column(Float, nullable=True)
+    map50_95: Mapped[float | None] = mapped_column(Float, nullable=True)
+    metrics_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    dataset: Mapped[Dataset | None] = relationship(back_populates="model_versions")
+    training_task: Mapped[TrainingTask | None] = relationship(back_populates="model_versions", foreign_keys=[training_task_id])
+    source_model: Mapped["ModelVersion | None"] = relationship(remote_side=[id], foreign_keys=[source_model_id])

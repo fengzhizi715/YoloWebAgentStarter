@@ -29,6 +29,13 @@
 - 本地单用户版本采用单进程 FIFO 队列；进程组停止、数据库 `stop_requested` 标记和启动时 running→failed 恢复共同覆盖服务重启与停止竞态。
 - Phase 4 完成条件要求 `best.pt` 和 `last.pt` 同时存在；进程返回 0 但 checkpoint 缺失时任务仍标记 failed，避免产生不可用的“成功”任务。
 
+### Phase 5 实施发现
+
+- ModelVersion 只记录 Starter 训练任务产生的 best/last PT 和其 ONNX 导出；不提供任意外部 PT 导入入口，避免数据库指向不可控文件。
+- 训练完成后将 best.pt / last.pt 复制到 `data/models/<model_id>/` 并写入模型表；训练运行目录仍保留为可追溯的任务产物。
+- ONNX 导出只接受受管 Ultralytics PT，固定 FP32、640、batch 1、静态 shape，不迁移 FP16、INT8、TensorRT 或 OpenVINO 转换链。
+- ONNX 记录通过 `source_model_id` 关联源 PT；重复导出直接返回已有记录，转换失败时回滚记录并保留源 PT。
+
 ### Phase 1 固定源快照
 
 - 源仓库：`/Users/tony/PycharmProjects/YoloWebAgent`

@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnnotationCanvas, type AnnotationDraft } from "./annotation/AnnotationCanvas";
 import { api, apiUrl } from "./api/client";
 import { TrainingView } from "./pages/TrainingView";
+import { ModelsView } from "./pages/ModelsView";
 import type { Annotation, ClassLabel, Dataset, ImageItem, SplitName, TaskType, ValidationReport } from "./types";
 
-type View = "workspace" | "annotation" | "training";
+type View = "workspace" | "annotation" | "training" | "models";
 
 export default function App() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -94,6 +95,8 @@ export default function App() {
         />
       ) : view === "training" && displayedDataset ? (
         <TrainingView dataset={displayedDataset} onBack={() => setView("workspace")} />
+      ) : view === "models" && displayedDataset ? (
+        <ModelsView dataset={displayedDataset} onBack={() => setView("workspace")} />
       ) : (
         <Workspace
           datasets={datasets}
@@ -113,6 +116,7 @@ export default function App() {
           onActiveClassChange={setActiveClassId}
           onOpenImage={openImage}
           onOpenTraining={() => setView("training")}
+          onOpenModels={() => setView("models")}
           onSplitChange={(image, split) => selected && run(async () => { const updated = await api.updateImageSplit(selected.id, image.id, split); setImages((items) => items.map((item) => item.id === image.id ? updated : item)); await refreshDatasets(); })}
         />
       )}
@@ -124,7 +128,7 @@ function Workspace(props: {
   datasets: Dataset[]; selected?: Dataset; classes: ClassLabel[]; images: ImageItem[]; report?: ValidationReport; activeClassId: string; busy: boolean;
   onSelect: (dataset: Dataset) => void; onCreate: (name: string, type: TaskType) => void; onAddClass: (name: string) => void;
   onUpload: (files: File[], split: SplitName) => void; onScan: (path: string, split: SplitName) => void; onImport: (file: File, name: string, type: TaskType) => void; onValidate: () => void;
-  onActiveClassChange: (id: string) => void; onOpenImage: (image: ImageItem) => void; onOpenTraining: () => void; onSplitChange: (image: ImageItem, split: SplitName) => void;
+  onActiveClassChange: (id: string) => void; onOpenImage: (image: ImageItem) => void; onOpenTraining: () => void; onOpenModels: () => void; onSplitChange: (image: ImageItem, split: SplitName) => void;
 }) {
   const [name, setName] = useState("");
   const [type, setType] = useState<TaskType>("detect");
@@ -150,7 +154,7 @@ function Workspace(props: {
       </aside>
       <section className="workspace panel">
         {!props.selected ? <EmptyWorkspace onOpenImport={() => importRef.current?.click()} importName={importName} setImportName={setImportName} importType={importType} setImportType={setImportType} /> : <>
-          <div className="workspace-header"><div><span className="eyebrow">DATASET WORKSPACE</span><h1>{props.selected.name}</h1><p>{props.selected.task_type === "detect" ? "Bounding-box detection" : "Polygon segmentation"} · {props.selected.image_count} 张图片 · {props.selected.class_count} 个类别</p></div><div className="header-actions"><button className="button primary" onClick={props.onOpenTraining}>训练</button><a className="button" href={api.exportYoloUrl(props.selected.id)}>导出 YOLO ZIP</a></div></div>
+          <div className="workspace-header"><div><span className="eyebrow">DATASET WORKSPACE</span><h1>{props.selected.name}</h1><p>{props.selected.task_type === "detect" ? "Bounding-box detection" : "Polygon segmentation"} · {props.selected.image_count} 张图片 · {props.selected.class_count} 个类别</p></div><div className="header-actions"><button className="button primary" onClick={props.onOpenTraining}>训练</button><button className="button" onClick={props.onOpenModels}>模型</button><a className="button" href={api.exportYoloUrl(props.selected.id)}>导出 YOLO ZIP</a></div></div>
           <div className="action-row"><input ref={uploadRef} type="file" accept="image/*" multiple hidden onChange={(event) => { if (event.target.files) props.onUpload(Array.from(event.target.files), split); event.currentTarget.value = ""; }} /><select value={split} onChange={(event) => setSplit(event.target.value as SplitName)}><option value="train">train</option><option value="val">val</option><option value="test">test</option></select><button className="button primary" onClick={() => uploadRef.current?.click()}>上传图片</button><input placeholder="扫描受管目录相对路径" value={scanPath} onChange={(event) => setScanPath(event.target.value)} /><button className="button" disabled={!scanPath.trim()} onClick={() => props.onScan(scanPath.trim(), split)}>扫描目录</button><button className="button" onClick={props.onValidate}>运行校验</button></div>
           <div className="split-tabs">{(["all", "train", "val", "test"] as const).map((item) => <button key={item} className={tab === item ? "tab active" : "tab"} onClick={() => setTab(item)}>{item === "all" ? "全部" : item}</button>)}</div>
           <div className="class-strip"><span className="eyebrow">CLASSES</span>{props.classes.map((item) => <button key={item.id} className={props.activeClassId === item.id ? "class-chip active" : "class-chip"} onClick={() => props.onActiveClassChange(item.id)}><i style={{ background: item.color }} />{item.class_index}: {item.name}</button>)}<input value={className} placeholder="新增类别" onChange={(event) => setClassName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && className.trim()) { props.onAddClass(className.trim()); setClassName(""); } }} /></div>

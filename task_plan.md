@@ -46,7 +46,7 @@ Starter 提供完整的基础闭环；Enterprise 提供自动化、协作、诊�
 
 ## Current Phase
 
-Phase 4 已完成，下一阶段进入 Phase 5：模型管理与 PT / ONNX 垂直切片。
+Phase 5 已完成，下一阶段进入 Phase 6：公开发布、安全审计与引流体验。
 
 ## Phases
 
@@ -106,16 +106,16 @@ Phase 4 已完成，下一阶段进入 Phase 5：模型管理与 PT / ONNX 垂�
 
 ### Phase 5: 模型管理与 PT / ONNX 垂直切片
 
-- [ ] 迁移 ModelVersion 核心模型和训练产物入库逻辑。
-- [ ] 迁移模型列表、详情、备注、归档、恢复、删除和下载。
-- [ ] 明确 PT “导出”为训练产物下载或已导入 PT 下载，不创建伪转换任务。
-- [ ] 从完整 Deployment 中抽取最小 ONNX 导出能力。
-- [ ] 清理 YOLO engine 对 FP16、量化、OpenVINO 和 TensorRT 模块的直接依赖。
-- [ ] 清理模型服务对自动标注解析器、部署指标和商业模块的直接依赖。
-- [ ] 迁移模型列表、详情、PT 下载和 ONNX 导出入口。
-- [ ] 补齐 PT 下载、ONNX 生成、ONNX 入库、重复导出和失败处理测试。
+- [x] 迁移 ModelVersion 核心模型和训练产物入库逻辑。
+- [x] 迁移模型列表、详情、备注、归档、恢复、删除和下载。
+- [x] 明确 PT “导出”为训练产物下载或已导入 PT 下载，不创建伪转换任务。
+- [x] 从完整 Deployment 中抽取最小 ONNX 导出能力。
+- [x] 清理 YOLO engine 对 FP16、量化、OpenVINO 和 TensorRT 模块的直接依赖。
+- [x] 清理模型服务对自动标注解析器、部署指标和商业模块的直接依赖。
+- [x] 迁移模型列表、详情、PT 下载和 ONNX 导出入口。
+- [x] 补齐 PT 下载、ONNX 生成、ONNX 入库、重复导出和失败处理测试。
 - **Exit gate:** 用户可管理训练模型、下载 PT，并从 PT 生成和下载 ONNX。
-- **Status:** pending
+- **Status:** complete
 
 ### Phase 6: 公开发布、安全审计与引流体验
 

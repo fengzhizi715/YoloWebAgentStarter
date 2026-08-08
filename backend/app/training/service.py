@@ -37,7 +37,7 @@ class TrainingService:
         self.session_factory = session_factory
         self.storage = storage
         self.queue = queue
-        self.queue.configure(session_factory)
+        self.queue.configure(session_factory, storage)
 
     def create_task(self, session: Session, payload: TrainingTaskCreate) -> TrainingTaskResponse:
         dataset = get_dataset(session, payload.dataset_id)

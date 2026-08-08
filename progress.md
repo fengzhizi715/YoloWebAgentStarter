@@ -56,6 +56,21 @@
 - Exit gate:
   - 用户可从 Starter 数据集选择 train/val split，创建本地 detect/segment 训练任务，并获得 best.pt / last.pt。
 
+### Phase 5: 模型管理与 PT / ONNX 垂直切片
+
+- **Status:** complete
+- Actions taken:
+  - 新增 `model_versions` 与 `0003_models_baseline`，只保存 Starter 训练产物和 ONNX 导出关联。
+  - 训练成功后自动复制并登记 best/last PT 到受管模型目录，模型下载不接受目录外路径。
+  - 接入模型列表、详情、名称/版本/备注编辑、归档、恢复、删除和 PT/ONNX 下载 API。
+  - 从 Ultralytics 提取最小 ONNX FP32 exporter，使用 `source_model_id` 去重并覆盖失败回滚。
+  - 接入模型管理前端页和数据集工作台入口。
+- Verification:
+  - 后端 12 项测试通过，覆盖 PT 登记/下载、模型生命周期、ONNX 生成/下载、重复导出和失败处理。
+  - 前端测试 2 项、Vite production build、Ruff/Pyflakes 通过。
+- Exit gate:
+  - 用户可管理训练模型、下载 PT，并从 PT 生成和下载 ONNX FP32。
+
 ### Plan Setup: 创建 Starter 迁移计划
 
 - **Status:** complete

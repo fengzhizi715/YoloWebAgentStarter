@@ -125,3 +125,33 @@ export interface TrainingLog {
   logs: string;
   line_count: number;
 }
+
+export type ModelStatus = "active" | "archived";
+export type ModelFormat = "pt" | "onnx";
+export type ModelArtifactType = "best" | "last" | "onnx";
+
+export interface ModelVersion {
+  id: string;
+  name: string;
+  version: string;
+  dataset_id: string | null;
+  training_task_id: string | null;
+  source_model_id: string | null;
+  source: "training_task" | "exported";
+  artifact_type: ModelArtifactType;
+  format: ModelFormat;
+  task_type: TaskType;
+  engine_type: string;
+  model_path: string;
+  base_model: string | null;
+  status: ModelStatus;
+  precision: number | null;
+  recall: number | null;
+  map50: number | null;
+  map50_95: number | null;
+  metrics_json: Record<string, number>;
+  notes: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}

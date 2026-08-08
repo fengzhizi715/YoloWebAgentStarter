@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.models import TrainingTask
+from app.core.storage import Storage
 
 
 class TrainingQueue:
@@ -14,10 +15,12 @@ class TrainingQueue:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._session_factory: sessionmaker[Session] | None = None
+        self._storage: Storage | None = None
         self._active_task_id: str | None = None
 
-    def configure(self, session_factory: sessionmaker[Session]) -> None:
+    def configure(self, session_factory: sessionmaker[Session], storage: Storage | None = None) -> None:
         self._session_factory = session_factory
+        self._storage = storage
 
     def submit(self, task_id: str) -> None:
         self._pump()
@@ -63,7 +66,7 @@ class TrainingQueue:
             self._active_task_id = next_id
         from app.training.runtime.runner import TrainingRunner
 
-        threading.Thread(target=TrainingRunner(session_factory, self).run, args=(next_id,), daemon=True).start()
+        threading.Thread(target=TrainingRunner(session_factory, self, self._storage).run, args=(next_id,), daemon=True).start()
 
 
 training_queue = TrainingQueue()

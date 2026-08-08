@@ -24,7 +24,7 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
     async def lifespan(app: FastAPI):
         if run_migrations:
             upgrade_database(resolved.project_root / "backend", resolved.database_url)
-        training_queue.configure(database.session_factory)
+        training_queue.configure(database.session_factory, storage)
         training_queue.recover_orphaned()
         yield
         database.dispose()
