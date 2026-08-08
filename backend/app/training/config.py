@@ -3,9 +3,13 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.core.errors import ValidationError
 from app.core.task_types import TaskType
+
+if TYPE_CHECKING:
+    from app.core.storage import Storage
 
 
 def infer_model_family(model: str) -> TaskType | None:
@@ -28,12 +32,20 @@ def validate_model_family(task_type: TaskType, model: str) -> None:
         )
 
 
-def resolve_model_reference(model: str) -> str:
+def resolve_model_reference(model: str, storage: "Storage | None" = None) -> str:
     candidate = Path(model).expanduser()
     if candidate.is_absolute() or candidate.parent != Path("."):
         resolved = candidate.resolve()
         if not resolved.is_file():
             raise ValidationError("model_file_missing", "The local model file does not exist.")
+        if storage is not None:
+            try:
+                storage.managed_model_path(resolved)
+            except ValidationError as exc:
+                raise ValidationError(
+                    "model_path_outside_managed_dir",
+                    "Local training weights must be stored in the managed models directory.",
+                ) from exc
         return str(resolved)
     if not model.endswith((".pt", ".yaml")):
         raise ValidationError("unsupported_model_reference", "Training models must be a .pt or .yaml reference.")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -60,7 +60,7 @@ def restore_model(
     return ModelService(storage).restore_model(session, model_id)
 
 
-@router.delete("/{model_id}", status_code=204)
+@router.delete("/{model_id}", status_code=204, response_class=Response, response_model=None)
 def delete_model(
     model_id: str,
     session: Session = Depends(get_session),

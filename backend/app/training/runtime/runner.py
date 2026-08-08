@@ -158,8 +158,6 @@ class TrainingRunner:
                     else f"YOLO training exited with code {return_code}."
                 )
                 log_store.append(task.error_message)
-            session.commit()
-            dataset = task.dataset
             if task.status == "completed" and self.storage is not None:
                 try:
                     from app.models.service import ModelService
@@ -167,6 +165,12 @@ class TrainingRunner:
                     registered = ModelService(self.storage).register_training_artifacts(session, task)
                     log_store.append(f"Registered {len(registered)} model artifacts.")
                 except Exception as exc:
-                    log_store.append(f"Model artifact registration failed: {exc}")
+                    task = session.get(TrainingTask, task_id)
+                    if task is None:
+                        return
+                    task.status = "failed"
+                    task.error_message = f"Training artifacts could not be registered: {exc}"
+                    log_store.append(task.error_message)
+            dataset = task.dataset
             write_training_summary(task, dataset)
             session.commit()

@@ -23,10 +23,10 @@ Agent workflows, automatic annotation, evaluation, deployment runtimes, OBB, pos
 
 ## Quick start
 
-Requirements: Python 3.10+, Node.js 20+.
+Requirements: Python 3.11 or 3.12 (3.12 is the release-tested version), Node.js 20+.
 
 ```bash
-python3 -m venv .venv
+.venv/bin/python --version  # use Python 3.11/3.12; create it if it does not exist
 .venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 npm --prefix frontend install
 ./scripts/run-backend.sh
@@ -39,6 +39,10 @@ In another terminal:
 ```
 
 Open <http://127.0.0.1:5173>. The API listens on <http://127.0.0.1:8000>.
+
+If `.venv` does not exist, create it with a supported interpreter first, for example `python3.12 -m venv .venv`. The first use of a named YOLO weight such as `yolo11n.pt` may download it. Do not place model weights in arbitrary filesystem locations: local paths accepted by a training task must be under the managed `data/models/` directory.
+
+For a five-minute walk-through, configuration examples, and troubleshooting, see [docs/quick-start.md](docs/quick-start.md). To generate a tiny disposable YOLO demo dataset, run `./.venv/bin/python scripts/create_tiny_demo.py /tmp/ywa-tiny-demo`.
 
 The backend upgrades the SQLite database to the current Alembic revision at startup. To run it explicitly:
 
@@ -58,6 +62,21 @@ Server-side directory scanning is restricted to `YWA_IMPORT_ROOT` (default: `./d
 
 Configuration is documented in [backend/.env.example](backend/.env.example).
 
+## Local-only security boundary
+
+Starter has no authentication, authorization, TLS termination, or multi-user isolation. It is deliberately bound to `127.0.0.1` by default and is **not** a public-server deployment template. Do not bind it to `0.0.0.0`, forward its port, or put it behind a public reverse proxy without adding an appropriate security layer. See [SECURITY.md](SECURITY.md) and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) before distributing a build.
+
+## Starter and Enterprise
+
+| Capability | Starter | Enterprise |
+|---|---|---|
+| Detect and segment dataset workflow | Local single-user | Collaborative and governed workflows |
+| Training and model artifacts | Local FIFO queue; PT and static FP32 ONNX | Managed automation, evaluation, deployment, and operations |
+| Access control and deployment | Not included | Product-specific enterprise controls and delivery |
+| Automatic annotation, Agent, Workflow, evaluation | Not included | Available in the Enterprise product line |
+
+The public Enterprise contact endpoint has not yet been configured for this repository. Maintainers must replace this notice with an approved sales or contact URL before a marketing release; until then, use the repository's normal issue channel for Starter bug reports only.
+
 ## Development checks
 
 ```bash
@@ -66,7 +85,7 @@ npm --prefix frontend test
 npm --prefix frontend run build
 ```
 
-See [phase1_scope.md](phase1_scope.md), [migration_matrix.md](migration_matrix.md), and [source_snapshot.md](source_snapshot.md) for the product boundary and migration provenance.
+See [phase1_scope.md](phase1_scope.md), [migration_matrix.md](migration_matrix.md), and [source_snapshot.md](source_snapshot.md) for the product boundary and migration provenance. Third-party and model-weight distribution notes are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Known limitations
 

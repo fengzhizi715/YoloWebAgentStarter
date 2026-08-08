@@ -192,6 +192,20 @@ def test_training_rejects_wrong_weight_family(client):
     assert response.json()["error"]["code"] == "model_task_mismatch"
 
 
+def test_training_rejects_local_weight_outside_managed_models(client, tmp_path):
+    dataset_id, _ = prepared_dataset(client)
+    external_weight = tmp_path / "external.pt"
+    external_weight.write_bytes(b"not a managed weight")
+
+    response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "model": str(external_weight)},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "model_path_outside_managed_dir"
+
+
 def test_training_rejects_missing_validation_split(client):
     dataset_id, _ = prepared_dataset(client)
     images = client.get(f"/api/datasets/{dataset_id}/images").json()["items"]

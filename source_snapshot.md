@@ -4,7 +4,7 @@
 
 | 字段 | 值 |
 |------|----|
-| Source repository | `/Users/tony/PycharmProjects/YoloWebAgent` |
+| Source repository | YoloWebAgent source repository (not included here) |
 | Remote | `https://github.com/fengzhizi715/YoloWebAgent.git` |
 | Branch at capture | `feature/mysql` |
 | Commit SHA | `701f6e5a63b73f39e35f48fb6de7d2414401875a` |
@@ -15,7 +15,7 @@
 | Working tree | clean |
 | Captured at | `2026-08-08` |
 
-该完整 commit SHA 是 Starter v1 唯一迁移基线。后续源项目提交不会自动进入 Starter；任何基线变更都必须更新本文件、`migration_matrix.md` 和 `progress.md`。
+该完整 commit SHA 是 Starter v1 唯一迁移基线。后续源项目提交不会自动进入 Starter；任何基线变更都必须更新本文件和 `migration_matrix.md`。
 
 ## 2. 固定方式
 
@@ -24,7 +24,7 @@
 - 迁移时从该 commit 读取文件，例如：
 
 ```bash
-git -C /Users/tony/PycharmProjects/YoloWebAgent show 701f6e5a63b73f39e35f48fb6de7d2414401875a:path/to/file
+git -C /path/to/yolowebagent-source show 701f6e5a63b73f39e35f48fb6de7d2414401875a:path/to/file
 ```
 
 - 不从源项目工作树盲目复制未提交内容。
@@ -58,10 +58,10 @@ git -C /Users/tony/PycharmProjects/YoloWebAgent show 701f6e5a63b73f39e35f48fb6de
 ## 5. 快照验证命令
 
 ```bash
-git -C /Users/tony/PycharmProjects/YoloWebAgent status --porcelain=v1
-git -C /Users/tony/PycharmProjects/YoloWebAgent rev-parse HEAD
-git -C /Users/tony/PycharmProjects/YoloWebAgent rev-parse HEAD^{tree}
-git -C /Users/tony/PycharmProjects/YoloWebAgent show -s --format='%H%n%T%n%aI%n%s' HEAD
+git -C /path/to/yolowebagent-source status --porcelain=v1
+git -C /path/to/yolowebagent-source rev-parse HEAD
+git -C /path/to/yolowebagent-source rev-parse HEAD^{tree}
+git -C /path/to/yolowebagent-source show -s --format='%H%n%T%n%aI%n%s' HEAD
 ```
 
 期望值：

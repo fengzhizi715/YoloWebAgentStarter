@@ -17,6 +17,7 @@ def export_fp32_onnx(source_path: Path, output_path: Path) -> Path:
         simplify=False,
         half=False,
         nms=False,
+        opset=18,
     )
     source_export = Path(exported).expanduser().resolve()
     if not source_export.is_file():

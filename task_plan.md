@@ -2,7 +2,7 @@
 
 ## Goal
 
-从 `/Users/tony/PycharmProjects/YoloWebAgent` 选择性抽取核心能力，在 `/Users/tony/PycharmProjects/YoloWebAgentStarter` 建立一个可独立安装、运行和公开发布的开源引流产品；Starter 不运行时依赖 Enterprise，Enterprise 也不依赖 Starter 的仓库、分支或发布节奏。
+从固定的 YoloWebAgent 源快照选择性抽取核心能力，建立一个可独立安装、运行和公开发布的开源引流产品；Starter 不运行时依赖 Enterprise，Enterprise 也不依赖 Starter 的仓库、分支或发布节奏。
 
 ## Product Positioning
 
@@ -119,17 +119,17 @@ Phase 5 已完成，下一阶段进入 Phase 6：公开发布、安全审计与�
 
 ### Phase 6: 公开发布、安全审计与引流体验
 
-- [ ] 在独立虚拟环境和全新数据目录完成安装验证。
-- [ ] 审计 Python / npm 依赖、模型权重、vendor wheels、素材和截图的公开许可与分发方式。
-- [ ] 扫描并移除商业 License、内部部署脚本、客户信息、密钥、内网地址、日志和本地绝对路径。
-- [ ] 验证文件上传、图片读取、模型下载和导出路径不能越过 Starter 管理目录。
-- [ ] 明确无认证模式只适用于本地使用，不宣称可直接公网部署。
-- [ ] 编写 3～5 分钟 Quick Start、配置说明、数据目录、故障排查和已知限制。
-- [ ] 提供小型示例数据集、产品截图或短演示。
-- [ ] 在 README 中加入 Starter / Enterprise 功能对比和 Enterprise 联系入口。
-- [ ] 完成 lint、backend test、frontend build、CPU smoke 和可选 GPU smoke 的 CI。
+- [x] 在独立虚拟环境和全新数据目录完成安装验证。
+- [x] 审计 Python / npm 依赖、模型权重、vendor wheels、素材和截图的公开许可与分发方式。
+- [x] 扫描并移除商业 License、内部部署脚本、客户信息、密钥、内网地址、日志和本地绝对路径（来源快照仅保留脱敏归档信息）。
+- [x] 验证文件上传、图片读取、模型下载和导出路径不能越过 Starter 管理目录。
+- [x] 明确无认证模式只适用于本地使用，不宣称可直接公网部署。
+- [x] 编写 3～5 分钟 Quick Start、配置说明、数据目录、故障排查和已知限制。
+- [x] 提供可生成的小型 YOLO 示例数据集。
+- [ ] 在 README 中加入 Starter / Enterprise 功能对比和已批准的 Enterprise 联系入口。
+- [x] 建立 backend test、frontend test/build 的 CI；完成真实 CPU YOLO/ONNX smoke，GPU/MPS 保持发布前的可选平台门禁。
 - **Exit gate:** 许可证、安全、秘密信息、安装体验和引流入口全部通过发布检查。
-- **Status:** pending
+- **Status:** in progress — waiting for an approved Enterprise contact URL before a marketing release.
 
 ### Phase 7: Release Candidate 与迁移收尾
 
@@ -206,9 +206,9 @@ Phase 5 已完成，下一阶段进入 Phase 6：公开发布、安全审计与�
 
 ## Notes
 
-- 源项目：`/Users/tony/PycharmProjects/YoloWebAgent`
-- Starter 项目：`/Users/tony/PycharmProjects/YoloWebAgentStarter`
+- 源项目：固定快照，见 `source_snapshot.md`
+- Starter 项目：本仓库
 - 当前计划只定义迁移范围，不开始复制或修改业务代码。
-- 每完成一个阶段，同步更新本文件和 `progress.md`；新发现写入 `findings.md`。
+- 每完成一个阶段，同步更新本文件和发布检查记录。
 - Phase 1 已锁定；任何范围变更必须显式更新 `phase1_scope.md`、`migration_matrix.md`、工作量和测试门槛。
 - Phase 2 才初始化 Starter Git 和项目骨架；Phase 1 不复制或修改业务代码。

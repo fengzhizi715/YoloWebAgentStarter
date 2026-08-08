@@ -9,7 +9,7 @@
 | exclude | 不进入 Starter v1，且不能作为隐式依赖 |
 | defer | 首版不迁移，未来重新评估 |
 
-所有路径均相对于源项目 `/Users/tony/PycharmProjects/YoloWebAgent`，基线见 `source_snapshot.md`。
+所有路径均相对于已归档的源项目，固定基线见 `source_snapshot.md`。
 
 ## 2. 后端模块矩阵
 

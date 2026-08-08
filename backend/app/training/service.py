@@ -45,7 +45,7 @@ class TrainingService:
         if task_type.value != dataset.task_type:
             raise ValidationError("task_type_mismatch", "Training task type must match the dataset task type.")
         validate_model_family(task_type, payload.model)
-        model_reference = resolve_model_reference(payload.model)
+        model_reference = resolve_model_reference(payload.model, self.storage)
         self._validate_dataset_ready(session, dataset)
 
         task_id = new_id("train")

@@ -5,8 +5,8 @@ YoloWebAgentStarter is the independent community edition of YoloWebAgent. It mus
 ## Product boundary
 
 - Starter v1 supports `detect` and `segment` only.
-- Core flow: images → dataset → bbox/polygon annotation → validation → YOLO import/export.
-- Training and model management are added in later phases.
+- Core flow: images → dataset → bbox/polygon annotation → validation → YOLO import/export → local training → managed PT/ONNX artifacts.
+- Training is local and queue-backed; model versions are created only from managed training artifacts.
 - Auth, RBAC, License, Agent, Workflow, Evaluation, Deployment, SAM, automatic annotation, OBB, pose, and classify are out of scope.
 - The service is local single-user software and binds to `127.0.0.1` by default.
 
@@ -28,4 +28,3 @@ PYTHONPATH=backend .venv/bin/pytest backend/tests
 npm --prefix frontend test
 npm --prefix frontend run build
 ```
-

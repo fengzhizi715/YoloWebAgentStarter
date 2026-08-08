@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -143,7 +143,7 @@ def patch_dataset(dataset_id: str, payload: DatasetUpdate, session: Session = De
     return _dataset_response(update_dataset(session, dataset_id, payload))
 
 
-@router.delete("/{dataset_id}", status_code=204)
+@router.delete("/{dataset_id}", status_code=204, response_class=Response, response_model=None)
 def remove_dataset(dataset_id: str, session: Session = Depends(get_session), storage: Storage = Depends(get_storage)) -> None:
     delete_dataset(session, storage, dataset_id)
 
@@ -158,7 +158,7 @@ def post_class(dataset_id: str, payload: ClassLabelCreate, session: Session = De
     return _class_response(create_class(session, dataset_id, payload))
 
 
-@router.delete("/{dataset_id}/classes/{class_id}", status_code=204)
+@router.delete("/{dataset_id}/classes/{class_id}", status_code=204, response_class=Response, response_model=None)
 def remove_class(dataset_id: str, class_id: str, session: Session = Depends(get_session)) -> None:
     delete_class(session, dataset_id, class_id)
 
@@ -218,7 +218,7 @@ def patch_image(
     return _image_response(update_image_split(session, image_id, payload.split))
 
 
-@router.delete("/{dataset_id}/images/{image_id}", status_code=204)
+@router.delete("/{dataset_id}/images/{image_id}", status_code=204, response_class=Response, response_model=None)
 def remove_image(
     dataset_id: str,
     image_id: str,
