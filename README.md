@@ -3,7 +3,7 @@
 YoloWebAgentStarter 是用于构建 YOLO 数据集的本地开源工作台。首个公开版本聚焦于可靠的数据闭环：
 
 ```text
-图片 → 数据集 → bbox / polygon 标注 → 校验 → YOLO 导入 / 导出
+图片 → 数据集 → bbox / polygon / OBB / 分类标注 → 校验 → YOLO 导入 / 导出 → 本地训练
 ```
 
 Starter 仓库独立于 YoloWebAgent Enterprise，拥有自己的 Git 历史、SQLite 数据库、受管数据目录、API 与前端构建产物。
@@ -12,14 +12,15 @@ Starter 仓库独立于 YoloWebAgent Enterprise，拥有自己的 Git 历史、S
 
 - 数据集、类别、图片与 split 管理
 - 浏览器图片上传与受限的本地目录扫描
-- detect 的 bbox 标注与 segment 的 polygon 标注
+- detect 的 bbox、segment 的 polygon、OBB 和单标签 classify 标注
+- segment 的交互式 SAM 框/点提示建议；建议必须在界面确认后才会保存为 polygon 标注
 - 数据集校验
-- YOLO detect/segment ZIP 导入与导出
-- 本地 YOLO detect/segment 训练：队列任务、日志、进度、停止控制与 best/last checkpoint
+- YOLO detect/segment/OBB ZIP 与 classify 目录格式的导入和导出
+- 本地 YOLO detect/segment/OBB/classify 训练：队列任务、日志、进度、停止控制与 best/last checkpoint
 - 从训练产物创建的受管模型版本、PT 下载与 ONNX FP32 导出
 - 本地单用户运行，默认绑定 `127.0.0.1`
 
-Agent 工作流、自动标注、评估、部署运行时、OBB、pose 与 classify 不属于当前实现范围。
+Agent 工作流、批量自动标注、评估、部署运行时与 pose 不属于当前实现范围。
 
 ## 快速开始
 
@@ -45,6 +46,8 @@ npm --prefix frontend install
 请使用 Python 3.11 或 3.12 创建 `.venv`。首次使用 `yolo11n.pt` 等命名 YOLO 权重时，Ultralytics 可能下载该权重。请勿将模型权重放在任意文件系统位置：训练任务仅接受 `data/models/` 受管目录中的本地路径。
 
 请参阅 [docs/quick-start.md](docs/quick-start.md) 获取五分钟上手、配置示例与故障排查。执行 `./.venv/bin/python scripts/create_tiny_demo.py /tmp/ywa-tiny-demo` 可生成一个临时的微型 YOLO 示例数据集。
+
+要启用实际的 Ultralytics SAM 推理，请将 `YWA_SAM_MODEL` 配置为本地检查点或 Ultralytics 支持的模型名（例如 `sam_b.pt`）。未配置时，segment 工作台的框选建议会清楚标记为 `box_stub`，仅用于保持可审阅的人工标注流程，不代表模型推理。
 
 后端启动时会将 SQLite 数据库升级到当前 Alembic revision。如需显式执行：
 
@@ -72,7 +75,7 @@ Starter 没有认证、授权、TLS 终止或多用户隔离能力。它刻意�
 
 | 能力 | Starter | Enterprise |
 |---|---|---|
-| detect 与 segment 数据集流程 | 本地单用户 | 协作式且受治理的工作流 |
+| detect、segment、OBB 与 classify 数据集流程 | 本地单用户 | 协作式且受治理的工作流 |
 | 训练与模型产物 | 本地 FIFO 队列；PT 与静态 FP32 ONNX | 受管自动化、评估、部署与运维 |
 | 访问控制与部署 | 不提供 | 提供 Enterprise 专属控制与交付能力 |
 | 自动标注、Agent、Workflow、评估 | 不提供 | Enterprise 产品线提供 |
@@ -96,5 +99,5 @@ npm --prefix frontend run build
 ## 已知限制
 
 - 这是本地单用户应用，没有认证能力，不应直接暴露到公网。
-- 当前版本不包含自动标注、评估、部署、OBB、pose 或 classify。
+- 当前版本不包含批量自动标注、评估、部署或 pose。
 - 目录扫描仅接受 `YWA_IMPORT_ROOT` 以下路径；浏览器上传是可移植的默认方式。

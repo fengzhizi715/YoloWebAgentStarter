@@ -1,4 +1,4 @@
-export type TaskType = "detect" | "segment";
+export type TaskType = "detect" | "segment" | "obb" | "classify";
 export type SplitName = "train" | "val" | "test";
 
 export interface Dataset {
@@ -42,6 +42,14 @@ export interface BBox {
   height: number;
 }
 
+export interface OBB {
+  cx: number;
+  cy: number;
+  width: number;
+  height: number;
+  angle: number;
+}
+
 export interface Annotation {
   id: string;
   image_id: string;
@@ -50,12 +58,41 @@ export interface Annotation {
   class_index: number;
   label: string;
   color: string;
-  type: "bbox" | "polygon";
+  type: "bbox" | "polygon" | "obb" | "classify";
   bbox: BBox | null;
   polygon: [number, number][] | null;
-  source: "manual" | "imported";
+  obb: OBB | null;
+  source: "manual" | "imported" | "sam";
   created_at: string;
   updated_at: string;
+}
+
+export interface SamPrediction {
+  image_id: string;
+  class_id: string;
+  mask_id: string;
+  polygon: [number, number][];
+  score: number;
+  backend_used: string;
+  device: string | null;
+}
+
+export interface SamCapabilities {
+  model_configured: boolean;
+  box_prompt_available: boolean;
+  point_prompt_available: boolean;
+  box_backend: "ultralytics_sam" | "box_stub";
+}
+
+export interface SystemInfo {
+  name: string;
+  edition: string;
+  version: string;
+  task_types: TaskType[];
+  data_dir: string;
+  import_root: string;
+  auth_enabled: boolean;
+  sam: SamCapabilities;
 }
 
 export interface ValidationIssue {

@@ -15,7 +15,7 @@
 | Working tree | clean |
 | Captured at | `2026-08-08` |
 
-该完整 commit SHA 是 Starter v1 唯一迁移基线。后续源项目提交不会自动进入 Starter；任何基线变更都必须更新本文件和 `migration_matrix.md`。
+该完整 commit SHA 是 Community v2 唯一迁移基线。后续源项目提交不会自动进入 Starter；任何基线变更都必须更新本文件和 `migration_matrix.md`。
 
 ## 2. 固定方式
 
@@ -55,7 +55,17 @@ git -C /path/to/yolowebagent-source show 701f6e5a63b73f39e35f48fb6de7d2414401875
 
 因此本基线只能作为选择性抽取来源，禁止通过复制完整目录后简单隐藏菜单来形成公开版本。
 
-## 5. 快照验证命令
+## 5. Community v2 选择性抽取记录
+
+在用户确认扩展范围后，Community v2 从同一固定 commit 仅参考并重建了以下公开工作流契约：
+
+- `backend/app/core/task_types.py`、`backend/app/core/schemas.py` 与 `backend/app/dataset/annotation/service.py` 的 OBB / classify task 与标注模型；
+- `backend/app/dataset/exchange/yolo/dataset_file_writer.py`、`label_writer.py` 的 OBB 八点 YOLO 标签与 classify 目录布局；
+- `backend/app/sam/schemas.py`、`backend/app/sam/backends/box_stub.py`、`backend/app/sam/ultralytics_backend.py` 的框/点提示、建议多边形和延迟加载模型边界。
+
+Starter 对这些能力保留独立的 SQLite schema、存储边界、路由和前端实现；不复制 Enterprise 的设置/Profile、Vision Provider、Agent、自动标注、文本分割或 deployment 模块，也不在运行时读取源仓库。
+
+## 6. 快照验证命令
 
 ```bash
 git -C /path/to/yolowebagent-source status --porcelain=v1

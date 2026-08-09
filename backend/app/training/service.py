@@ -232,6 +232,25 @@ class TrainingService:
         )
         if not split_counts.get("train") or not split_counts.get("val"):
             raise ValidationError("training_split_missing", "Training requires at least one train image and one val image.")
+        if dataset.task_type == "classify":
+            annotated_splits = set(
+                session.scalars(
+                    select(ImageItem.split)
+                    .join(Annotation, Annotation.image_id == ImageItem.id)
+                    .where(
+                        ImageItem.dataset_id == dataset.id,
+                        Annotation.dataset_id == dataset.id,
+                        Annotation.type == "classify",
+                    )
+                )
+            )
+            missing = {"train", "val"} - annotated_splits
+            if missing:
+                raise ValidationError(
+                    "training_classification_split_unannotated",
+                    "Classification training requires at least one annotated image in both train and val splits.",
+                    details={"missing_splits": sorted(missing)},
+                )
         class_count = session.scalar(select(func.count()).select_from(ClassLabel).where(ClassLabel.dataset_id == dataset.id)) or 0
         if not class_count:
             raise ValidationError("training_classes_missing", "Training requires at least one class label.")

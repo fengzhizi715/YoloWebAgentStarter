@@ -96,8 +96,9 @@ def scan_images(
             skipped += 1
             continue
         try:
-            uploads.append((path.name, path.read_bytes()))
-        except OSError:
+            resolved = storage.resolve_import_file(path)
+            uploads.append((path.name, resolved.read_bytes()))
+        except (OSError, ValidationError):
             invalid += 1
     imported = 0
     for file_name, content in uploads:
@@ -126,4 +127,3 @@ def delete_image(session: Session, storage: Storage, image_id: str) -> None:
     refresh_dataset_counts(session, dataset_id)
     session.commit()
     path.unlink(missing_ok=True)
-

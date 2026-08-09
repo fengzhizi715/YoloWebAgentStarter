@@ -4,9 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.models import Annotation, ClassLabel, Dataset, ImageItem
-from app.core.schemas import ValidationIssue, ValidationReport
+from app.core.schemas import OBB, ValidationIssue, ValidationReport
 from app.core.storage import Storage
-from app.dataset.annotation.geometry import validate_bbox, validate_polygon
+from app.core.task_types import annotation_type_for
+from app.dataset.annotation.geometry import validate_bbox, validate_obb, validate_polygon
 
 
 def validate_dataset(session: Session, storage: Storage, dataset_id: str) -> ValidationReport:
@@ -61,6 +62,15 @@ def validate_dataset(session: Session, storage: Storage, dataset_id: str) -> Val
                     image_id=image.id,
                 )
             )
+        if dataset.task_type == "classify" and len(image_annotations) > 1:
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    code="classify_multiple",
+                    message="Classification datasets allow exactly one class per image.",
+                    image_id=image.id,
+                )
+            )
         for annotation in image_annotations:
             if annotation.dataset_id != dataset_id or annotation.class_id not in class_ids:
                 issues.append(
@@ -73,7 +83,7 @@ def validate_dataset(session: Session, storage: Storage, dataset_id: str) -> Val
                     )
                 )
                 continue
-            expected_type = "bbox" if dataset.task_type == "detect" else "polygon"
+            expected_type = annotation_type_for(dataset.task_type)
             if annotation.type != expected_type:
                 issues.append(
                     ValidationIssue(
@@ -99,12 +109,14 @@ def validate_dataset(session: Session, storage: Storage, dataset_id: str) -> Val
                         image.width,
                         image.height,
                     )
-                else:
+                elif annotation.type == "polygon":
                     validate_polygon(
                         [tuple(point) for point in (annotation.polygon or [])],
                         image.width,
                         image.height,
                     )
+                elif annotation.type == "obb":
+                    validate_obb(OBB(**(annotation.obb or {})), image.width, image.height)
             except Exception as exc:
                 from app.core.errors import DomainError
 

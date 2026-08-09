@@ -53,6 +53,16 @@ class Storage:
             raise ValidationError("import_directory_missing", "Import directory does not exist.")
         return candidate
 
+    def resolve_import_file(self, candidate: Path) -> Path:
+        """Resolve one scanned file without allowing symlinks to escape the import root."""
+
+        resolved = candidate.resolve()
+        if not _is_within(resolved, self.import_root):
+            raise ValidationError("import_path_outside_root", "Import file must stay inside YWA_IMPORT_ROOT.")
+        if not resolved.is_file():
+            raise ValidationError("import_file_missing", "Import file does not exist.")
+        return resolved
+
     def safe_storage_name(self, original_name: str, image_id: str) -> str:
         source = Path(original_name).name
         suffix = Path(source).suffix.lower()

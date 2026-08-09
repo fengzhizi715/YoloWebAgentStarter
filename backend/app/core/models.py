@@ -16,7 +16,7 @@ class TimestampMixin:
 
 class Dataset(Base, TimestampMixin):
     __tablename__ = "datasets"
-    __table_args__ = (CheckConstraint("task_type IN ('detect', 'segment')", name="ck_dataset_task_type"),)
+    __table_args__ = (CheckConstraint("task_type IN ('detect', 'segment', 'obb', 'classify')", name="ck_dataset_task_type"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -72,7 +72,7 @@ class ImageItem(Base, TimestampMixin):
 
 class Annotation(Base, TimestampMixin):
     __tablename__ = "annotations"
-    __table_args__ = (CheckConstraint("type IN ('bbox', 'polygon')", name="ck_annotation_type"),)
+    __table_args__ = (CheckConstraint("type IN ('bbox', 'polygon', 'obb', 'classify')", name="ck_annotation_type"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     image_id: Mapped[str] = mapped_column(ForeignKey("image_items.id", ondelete="CASCADE"), index=True, nullable=False)
@@ -84,6 +84,7 @@ class Annotation(Base, TimestampMixin):
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)
     polygon: Mapped[list[list[float]] | None] = mapped_column(JSON, nullable=True)
+    obb: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="manual", nullable=False)
 
     dataset: Mapped[Dataset] = relationship(back_populates="annotations")
@@ -93,7 +94,7 @@ class Annotation(Base, TimestampMixin):
 
 class TrainingProfile(Base, TimestampMixin):
     __tablename__ = "training_profiles"
-    __table_args__ = (CheckConstraint("task_type IN ('detect', 'segment')", name="ck_training_profile_task_type"),)
+    __table_args__ = (CheckConstraint("task_type IN ('detect', 'segment', 'obb', 'classify')", name="ck_training_profile_task_type"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), index=True, nullable=False)
@@ -119,7 +120,7 @@ class TrainingTask(Base, TimestampMixin):
     __tablename__ = "training_tasks"
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'running', 'completed', 'failed', 'stopped')", name="ck_training_task_status"),
-        CheckConstraint("task_type IN ('detect', 'segment')", name="ck_training_task_type"),
+        CheckConstraint("task_type IN ('detect', 'segment', 'obb', 'classify')", name="ck_training_task_type"),
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -172,7 +173,7 @@ class ModelVersion(Base, TimestampMixin):
         CheckConstraint("artifact_type IN ('best', 'last', 'onnx')", name="ck_model_version_artifact_type"),
         CheckConstraint("format IN ('pt', 'onnx')", name="ck_model_version_format"),
         CheckConstraint("status IN ('active', 'archived')", name="ck_model_version_status"),
-        CheckConstraint("task_type IN ('detect', 'segment')", name="ck_model_version_task_type"),
+        CheckConstraint("task_type IN ('detect', 'segment', 'obb', 'classify')", name="ck_model_version_task_type"),
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)

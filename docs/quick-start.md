@@ -21,11 +21,15 @@ Open `http://127.0.0.1:5173`. Both development servers are local-only by default
 
 ## 2. Create data and annotate
 
-1. Create a detect or segment dataset.
+1. Create a `detect`, `segment`, `obb`, or `classify` dataset.
 2. Upload images, or put them below `data/imports/` and scan a relative subdirectory.
-3. Add one or more classes and annotate each image with boxes or polygons.
+3. Add one or more classes, then use bbox (detect), polygon (segment), rotated box (OBB), or one image-level class (classify).
 4. Keep at least one image in both `train` and `val`, then run dataset validation.
-5. Export/import YOLO ZIP files from the dataset workspace when needed.
+5. Export/import YOLO ZIP files for detect, segment, or OBB; classification uses the standard `train/<class>/<image>` directory layout.
+
+For segment datasets, configuring `YWA_SAM_MODEL` enables Ultralytics SAM box and point prompts. Without that setting, the UI disables point prompts and clearly labels box prompts as a review-only rectangular suggestion; it does not claim model inference or save the suggestion as SAM-generated.
+
+For OBB datasets, drag on an empty canvas area to create a rotated box. Click an existing OBB to select it, drag it to move it, use the four corner handles to resize it, and use the top rotation handle (or the angle field) to rotate it. The editor keeps the resulting rotated corners inside the image before saving.
 
 For a disposable tiny detect dataset that can be imported through the UI:
 
@@ -37,7 +41,7 @@ The command writes three generated PNGs, labels, and `data.yaml`; it does not do
 
 ## 3. Train and export
 
-Open the training workspace, choose a matching named model (for example `yolo11n.pt` for detect), and start a local task. The first named-weight run may download a weight through Ultralytics. Finished tasks register `best.pt` and `last.pt` beneath `data/models/`; the model workspace can download them or create a static FP32 ONNX file.
+Open the training workspace, choose a matching named model (for example `yolo11n.pt`, `yolo11n-seg.pt`, `yolo11n-obb.pt`, or `yolo11n-cls.pt`), and start a local task. The first named-weight run may download a weight through Ultralytics. Finished tasks register `best.pt` and `last.pt` beneath `data/models/`; the model workspace can download them or create a static FP32 ONNX file.
 
 ## Configuration and data locations
 
@@ -48,6 +52,9 @@ Open the training workspace, choose a matching named model (for example `yolo11n
 | `YWA_HOST` | `127.0.0.1` | Local bind address; keep it local without adding authentication |
 | `YWA_MAX_UPLOAD_MB` | `50` | Per-upload size limit |
 | `YWA_YOLO_EXECUTABLE` | repository `.venv/bin/yolo` | Reviewed local override for the Ultralytics executable |
+| `YWA_SAM_MODEL` | unset | Local or Ultralytics-recognized SAM checkpoint; enables actual box and point inference |
+| `YWA_SAM_DEVICE` | `auto` | SAM inference device request; responses report the resolved device when Ultralytics exposes it |
+| `YWA_SAM_IMGSZ` | `1024` | SAM inference image size |
 
 Never point the database, import directory, or model registry at an Enterprise checkout.
 
@@ -64,6 +71,6 @@ Never point the database, import directory, or model registry at an Enterprise c
 ## Known limits
 
 - Local single-user only; no authentication, RBAC, TLS, public deployment, or tenancy.
-- Only detect and segment are supported.
-- No automatic annotation, Agent, Workflow, evaluation, deployment, OBB, pose, or classify.
+- Supports detect, segment, OBB, and single-label classify only; pose is not supported.
+- No batch automatic annotation, Agent, Workflow, evaluation, deployment, or text-prompt segmentation.
 - CPU is release-tested. GPU and Apple MPS are best-effort and must be smoke-tested in the target environment.

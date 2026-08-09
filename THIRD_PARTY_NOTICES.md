@@ -7,12 +7,14 @@ This file is a release checklist, not legal advice. Before a public release, the
 - Source code is MIT-licensed; see `LICENSE` and `NOTICE`.
 - Python dependencies are installed by `pip` from `backend/requirements*.txt`; wheels are not committed or redistributed by this repository.
 - Frontend dependencies are resolved from `frontend/package-lock.json`; `node_modules` is not committed or redistributed.
-- No pretrained weights, customer datasets, screenshots, videos, vendor wheels, or model artifacts are committed. Named Ultralytics weights are downloaded only on first use.
+- No pretrained weights, customer datasets, screenshots, videos, vendor wheels, or model artifacts are committed. Named Ultralytics YOLO or SAM weights are downloaded only on first use when configured.
 - Generated demo images come from `scripts/create_tiny_demo.py` and are entirely local.
 
 ## Release-sensitive dependency
 
 `ultralytics==8.3.40` enables training and ONNX export. Ultralytics documents AGPL-3.0 and an alternative Enterprise License for its software and AI models. A publisher must confirm that the intended distribution and any downloaded or trained weights comply with the applicable terms before shipping this Starter or a derivative.
+
+When `YWA_SAM_MODEL` is configured, the same Ultralytics runtime also performs interactive SAM inference. The publisher must separately verify the selected SAM checkpoint's license and redistribution terms; no checkpoint is bundled by this repository.
 
 ## Required release review
 

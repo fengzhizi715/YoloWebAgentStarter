@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.errors import ValidationError
 from app.core.ids import new_id
 from app.core.models import Annotation, ClassLabel
-from app.core.schemas import AnnotationInput, AnnotationResponse, BBox
+from app.core.schemas import AnnotationInput, AnnotationResponse, BBox, OBB
 from app.core.task_types import annotation_type_for
-from app.dataset.annotation.geometry import validate_bbox, validate_polygon
+from app.dataset.annotation.geometry import validate_bbox, validate_obb, validate_polygon
 from app.dataset.images import get_image
 from app.dataset.service import get_dataset
 
@@ -19,6 +19,7 @@ def _response(annotation: Annotation) -> AnnotationResponse:
     if annotation.type == "bbox":
         bbox = BBox(x=annotation.x or 0, y=annotation.y or 0, width=annotation.width or 0, height=annotation.height or 0)
     polygon = [tuple(point) for point in annotation.polygon] if annotation.polygon else None
+    obb = OBB(**annotation.obb) if annotation.type == "obb" and annotation.obb else None
     return AnnotationResponse(
         id=annotation.id,
         image_id=annotation.image_id,
@@ -30,6 +31,7 @@ def _response(annotation: Annotation) -> AnnotationResponse:
         type=annotation.type,
         bbox=bbox,
         polygon=polygon,
+        obb=obb,
         source=annotation.source,
         created_at=annotation.created_at,
         updated_at=annotation.updated_at,
@@ -52,6 +54,8 @@ def _validate_input(item: AnnotationInput, image_width: int, image_height: int) 
         validate_bbox(item.bbox, image_width, image_height)
     elif item.type == "polygon" and item.polygon is not None:
         validate_polygon(item.polygon, image_width, image_height)
+    elif item.type == "obb" and item.obb is not None:
+        validate_obb(item.obb, image_width, image_height)
 
 
 def replace_annotations(
@@ -62,6 +66,8 @@ def replace_annotations(
     image = get_image(session, image_id)
     dataset = get_dataset(session, image.dataset_id)
     expected_type = annotation_type_for(dataset.task_type)
+    if expected_type == "classify" and len(items) > 1:
+        raise ValidationError("classify_multiple", "Classification datasets allow exactly one class per image.")
     class_ids = set(
         session.scalars(select(ClassLabel.id).where(ClassLabel.dataset_id == dataset.id))
     )
@@ -87,6 +93,7 @@ def replace_annotations(
                 width=item.bbox.width if item.bbox else None,
                 height=item.bbox.height if item.bbox else None,
                 polygon=[list(point) for point in item.polygon] if item.polygon else None,
+                obb=item.obb.model_dump() if item.obb else None,
                 source=item.source,
             )
         )
@@ -95,4 +102,3 @@ def replace_annotations(
     image.status = "annotated" if created else "unannotated"
     session.commit()
     return list_annotations(session, image.id)
-

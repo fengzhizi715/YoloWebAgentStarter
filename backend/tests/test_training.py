@@ -74,6 +74,10 @@ def prepared_dataset(client, task_type: str = "detect") -> tuple[str, str]:
         annotation = {"type": "bbox", "class_id": label, "bbox": {"x": 5, "y": 5, "width": 25, "height": 20}}
         if task_type == "segment":
             annotation = {"type": "polygon", "class_id": label, "polygon": [[5, 5], [30, 5], [30, 25], [5, 25]]}
+        elif task_type == "obb":
+            annotation = {"type": "obb", "class_id": label, "obb": {"cx": 25, "cy": 20, "width": 25, "height": 20, "angle": 15}}
+        elif task_type == "classify":
+            annotation = {"type": "classify", "class_id": label}
         response = client.put(
             f"/api/datasets/{dataset_id}/images/{image['id']}/annotations",
             json={"annotations": [annotation]},
@@ -260,6 +264,35 @@ def test_segment_training_uses_segment_weight_family(client, tmp_path, monkeypat
     assert response.status_code == 201, response.text
     task = wait_for_terminal(client, response.json()["id"])
     assert task["status"] == "completed", task
+
+
+def test_obb_and_classify_training_use_their_weight_families(client, tmp_path, monkeypatch):
+    executable = tmp_path / "fake-yolo-extra-tasks"
+    fake_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+    for task_type, model in (("obb", "yolo11n-obb.pt"), ("classify", "yolo11n-cls.pt")):
+        dataset_id, _ = prepared_dataset(client, task_type)
+        response = client.post(
+            "/api/training/tasks",
+            json={"dataset_id": dataset_id, "name": f"{task_type}-smoke", "model": model, "epochs": 1, "batch_size": 1},
+        )
+        assert response.status_code == 201, response.text
+        task = wait_for_terminal(client, response.json()["id"])
+        assert task["status"] == "completed", task
+
+
+def test_classify_training_requires_annotated_train_and_val_images(client):
+    dataset_id, _ = prepared_dataset(client, "classify")
+    train_image = next(image for image in client.get(f"/api/datasets/{dataset_id}/images").json()["items"] if image["split"] == "train")
+    cleared = client.put(f"/api/datasets/{dataset_id}/images/{train_image['id']}/annotations", json={"annotations": []})
+    assert cleared.status_code == 200
+
+    response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "model": "yolo11n-cls.pt"},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "training_classification_split_unannotated"
 
 
 def test_running_training_can_be_stopped(client, tmp_path, monkeypatch):

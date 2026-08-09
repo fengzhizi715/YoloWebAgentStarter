@@ -22,6 +22,9 @@ class Settings:
     port: int = 8000
     cors_origins: tuple[str, ...] = ("http://127.0.0.1:5173", "http://localhost:5173")
     max_upload_bytes: int = 50 * 1024 * 1024
+    sam_model: str | None = None
+    sam_device: str = "auto"
+    sam_img_size: int = 1024
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -44,6 +47,9 @@ class Settings:
             port=int(os.getenv("YWA_PORT", "8000")),
             cors_origins=origins,
             max_upload_bytes=int(os.getenv("YWA_MAX_UPLOAD_MB", "50")) * 1024 * 1024,
+            sam_model=os.getenv("YWA_SAM_MODEL") or None,
+            sam_device=os.getenv("YWA_SAM_DEVICE", "auto"),
+            sam_img_size=int(os.getenv("YWA_SAM_IMGSZ", "1024")),
         )
 
     def ensure_directories(self) -> None:

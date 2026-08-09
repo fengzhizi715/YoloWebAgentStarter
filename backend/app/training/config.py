@@ -18,6 +18,10 @@ def infer_model_family(model: str) -> TaskType | None:
         return None
     if "-seg." in name or "_seg." in name:
         return TaskType.SEGMENT
+    if "-obb." in name or "_obb." in name:
+        return TaskType.OBB
+    if "-cls." in name or "_cls." in name:
+        return TaskType.CLASSIFY
     if name.endswith(".pt") or name.endswith(".yaml"):
         return TaskType.DETECT
     return None

@@ -9,6 +9,8 @@ import type {
   TrainingLog,
   TrainingTask,
   ModelVersion,
+  SamPrediction,
+  SystemInfo,
   ValidationReport,
 } from "../types";
 
@@ -41,6 +43,7 @@ const json = (body: unknown, method = "POST"): RequestInit => ({
 });
 
 export const api = {
+  getSystemInfo: () => request<SystemInfo>("/api/system/info"),
   listDatasets: () => request<Dataset[]>("/api/datasets"),
   createDataset: (name: string, taskType: TaskType, description?: string) =>
     request<Dataset>("/api/datasets", json({ name, task_type: taskType, description: description || null })),
@@ -69,6 +72,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ annotations }),
     }),
+  samPredict: (payload: { image_id: string; class_id: string; prompt_type: "box" | "point"; box?: { x: number; y: number; width: number; height: number }; points?: { x: number; y: number; label?: 0 | 1 }[] }) =>
+    request<SamPrediction>("/api/sam/predict", json(payload)),
   validateDataset: (datasetId: string) => request<ValidationReport>(`/api/datasets/${datasetId}/validate`, { method: "POST" }),
   importYolo: async (file: File, name: string, taskType: TaskType) => {
     const form = new FormData();

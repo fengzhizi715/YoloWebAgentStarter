@@ -9,8 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.core.task_types import TaskType
 
 SplitName = Literal["train", "val", "test"]
-AnnotationType = Literal["bbox", "polygon"]
-AnnotationSource = Literal["manual", "imported"]
+AnnotationType = Literal["bbox", "polygon", "obb", "classify"]
+AnnotationSource = Literal["manual", "imported", "sam"]
 
 
 class ORMModel(BaseModel):
@@ -56,7 +56,12 @@ class ClassLabelCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def strip_name(cls, value: str) -> str:
-        return value.strip()
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("class name cannot be blank")
+        if "/" in cleaned or "\\" in cleaned or cleaned in {".", ".."}:
+            raise ValueError("class name cannot contain path separators")
+        return cleaned
 
 
 class ClassLabelResponse(ORMModel):
@@ -116,11 +121,22 @@ class BBox(BaseModel):
     height: float
 
 
+class OBB(BaseModel):
+    """An oriented bounding box stored in absolute image pixels."""
+
+    cx: float
+    cy: float
+    width: float
+    height: float
+    angle: float
+
+
 class AnnotationInput(BaseModel):
     type: AnnotationType
     class_id: str
     bbox: BBox | None = None
     polygon: list[tuple[float, float]] | None = None
+    obb: OBB | None = None
     source: AnnotationSource = "manual"
 
     @model_validator(mode="after")
@@ -129,6 +145,8 @@ class AnnotationInput(BaseModel):
             raise ValueError("bbox is required for bbox annotations")
         if self.type == "polygon" and self.polygon is None:
             raise ValueError("polygon is required for polygon annotations")
+        if self.type == "obb" and self.obb is None:
+            raise ValueError("obb is required for oriented bounding-box annotations")
         return self
 
     @field_validator("polygon")
@@ -154,6 +172,7 @@ class AnnotationResponse(BaseModel):
     type: AnnotationType
     bbox: BBox | None = None
     polygon: list[tuple[float, float]] | None = None
+    obb: OBB | None = None
     source: AnnotationSource
     created_at: datetime
     updated_at: datetime

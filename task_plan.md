@@ -14,6 +14,10 @@ YoloWebAgentStarter 是本地 YOLO 数据集与训练工作台，必须独立跑
 
 Starter 提供完整的基础闭环；Enterprise 提供自动化、协作、诊断和部署交付能力。
 
+## Community v2 scope revision
+
+用户已明确确认 Community v2 基于固定 YoloWebAgent 快照选择性迁移 `detect`、`segment`、`obb`、`classify` 与 segment 的交互式 SAM 建议。该变更不引入 Enterprise 运行时依赖，也不包含批量自动标注、Agent、Workflow、Evaluation 或 Deployment。
+
 ## Migration Principles
 
 1. **选择性抽取**：从固定的源项目 commit 按功能切片迁移，不复制完整项目后再大规模删除。
@@ -23,25 +27,26 @@ Starter 提供完整的基础闭环；Enterprise 提供自动化、协作、诊�
 5. **弱耦合**：两个项目只在 YOLO 格式、TaskType、模型元数据和公开文档层保持一致。
 6. **最小维护承诺**：优先保证安装、基础闭环和严重问题修复，不为引流版本建立复杂扩展框架。
 
-## Starter v1 Scope Matrix
+## Community v2 Scope Matrix
 
-| 能力 | v1 状态 | 说明 |
+| 能力 | v2 状态 | 说明 |
 |------|---------|------|
 | detect 标注 / 导出 / 训练 | included | Starter 核心闭环 |
 | segment 标注 / 导出 / 训练 | included | Starter 核心闭环 |
-| OBB | excluded | 推迟到后续版本，不进入 Starter v1 |
-| classify | excluded | 推迟到后续版本，不进入 Starter v1 |
-| pose | excluded | 不进入 Starter v1 |
+| OBB | included | 独立 schema、YOLO 八点交换与本地训练 |
+| classify | included | 单图单类别、YOLO 类别目录交换与本地训练 |
+| pose | excluded | 不进入 Community v2 |
 | 图片目录导入 | included | 本地文件系统 |
 | YOLO 导入 / 导出 | included | 作为主要数据交换方式 |
-| native archive | excluded | v1 只使用 YOLO 作为公开数据交换格式 |
+| native archive | excluded | v2 只使用 YOLO 作为公开数据交换格式 |
 | split 与基础校验 | included | 训练前置能力 |
 | 视频抽帧 / tiling / 去重 / 高级质量分析 | excluded | 属于高级数据准备 |
 | 本地训练任务、日志、状态和 checkpoint | included | 不接 Workflow / Evaluation / Iteration |
 | 模型版本、PT 下载、ONNX 导出 | included | ONNX 仅保留 Starter 所需最小能力 |
 | TensorRT / OpenVINO / INT8 / Benchmark | excluded | Enterprise 部署能力 |
 | Evaluation / Active Learning / Agent / Workflow | excluded | Enterprise 闭环能力 |
-| SAM / 自动标注 / VLM | excluded | Enterprise 自动化能力 |
+| SAM 交互建议 | included | 仅 segment 的框/点提示，多边形由用户确认保存 |
+| 批量自动标注 / VLM | excluded | Enterprise 自动化能力 |
 | RBAC / 商业 License / Tenant | excluded | Starter 默认为本地单用户产品 |
 
 ## Current Phase
@@ -52,7 +57,7 @@ Phase 5 已完成，下一阶段进入 Phase 6：公开发布、安全审计与�
 
 ### Phase 1: 产品边界、迁移基线与文件清单
 
-- [x] 确认 Starter v1 只支持 detect / segment，OBB / classify / pose 不进入 v1。
+- [x] 初始 v1 仅支持 detect / segment；已由 Community v2 范围修订替代。
 - [x] 确认仅保留 YOLO import / export 与基础 validation，排除 native archive、质量报告和模型快速测试。
 - [x] 确认 Starter 为无登录本地单用户模式，默认只监听 `127.0.0.1`。
 - [x] 确认首发正式支持 macOS / Linux，Windows 暂不承诺。
@@ -87,7 +92,7 @@ Phase 5 已完成，下一阶段进入 Phase 6：公开发布、安全审计与�
 - [x] 迁移基础数据集校验和 YOLO 导入 / 导出。
 - [x] 迁移数据集列表、详情、图片列表和标注页面。
 - [x] 重建对应 API client、前端类型、错误处理和空状态。
-- [x] 移除 SAM、AI 自动标注、VLM、Active Learning 和高级 Preparation 入口。
+- [x] 移除批量自动标注、VLM、Active Learning 和高级 Preparation 入口；Community v2 仅保留可审阅的 SAM 交互建议。
 - [x] 补齐数据集、标注、校验、YOLO 往返和前端构建测试。
 - **Exit gate:** 用户可完成“导入图片 → 建类 → 标注 → 校验 → YOLO 导出”。
 - **Status:** complete
@@ -167,7 +172,7 @@ Phase 5 已完成，下一阶段进入 Phase 6：公开发布、安全审计与�
 
 | 问题 | 已锁定答案 |
 |------|------------|
-| TaskType | 只支持 detect / segment；OBB / classify / pose 排除 |
+| TaskType | 支持 detect / segment / obb / classify；pose 排除 |
 | 数据交换与质量能力 | 保留 YOLO import / export 和基础 validation；native archive、COCO、质量报告排除 |
 | 运行模式 | 本地无登录、单用户，默认绑定 `127.0.0.1` |
 | 平台与设备 | macOS / Linux 正式支持；CPU 必测，CUDA / MPS best-effort；Windows 暂不承诺 |
@@ -187,8 +192,8 @@ Phase 5 已完成，下一阶段进入 Phase 6：公开发布、安全审计与�
 | 无认证时默认仅监听 localhost | 限定 Starter 的安全使用边界。 |
 | 发布审计是阻断条件 | 开源仓库不得包含商业代码、敏感信息或未经核对的分发资源。 |
 | 源迁移基线固定为 `701f6e5a63b73f39e35f48fb6de7d2414401875a` | 后续源提交不会隐式进入 Starter，确保迁移可复现。 |
-| Starter v1 只支持 detect / segment | 控制标注、导出、训练和测试矩阵，避免首发范围膨胀。 |
-| v1 仅保留 YOLO 数据交换和 ONNX FP32 | 满足基础闭环，排除 native archive、COCO 和高级部署能力。 |
+| Community v2 选择性增加 OBB / classify / SAM 交互建议 | 按用户确认复用固定快照中的成熟契约，同时保持独立运行时边界。 |
+| v2 仅保留 YOLO 数据交换和 ONNX FP32 | 满足基础闭环，排除 native archive、COCO 和高级部署能力。 |
 | 首发支持 macOS / Linux，采用基础修复维护 | 与开源引流定位和可投入维护资源匹配。 |
 
 ## Estimated Effort

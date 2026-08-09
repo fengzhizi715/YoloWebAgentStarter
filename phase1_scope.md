@@ -1,22 +1,22 @@
-# YoloWebAgentStarter v1 功能矩阵
+# YoloWebAgentStarter Community v2 功能矩阵
 
 ## 1. 定位
 
-YoloWebAgentStarter v1 是一个本地运行的 YOLO 数据集与训练工作台，用于完成：
+YoloWebAgentStarter Community v2 是一个本地运行的 YOLO 数据集与训练工作台，用于完成：
 
 ```text
-图片 → 数据集 → detect / segment 人工标注 → 校验 → 本地训练 → PT → ONNX
+图片 → 数据集 → detect / segment / OBB / classify 人工标注 → 校验 → 本地训练 → PT → ONNX
 ```
 
 Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含完整训练闭环、企业协作或部署交付能力。
 
 ## 2. Phase 1 锁定决策
 
-| 决策项 | v1 决策 | 理由 |
+| 决策项 | Community v2 决策 | 理由 |
 |--------|---------|------|
-| TaskType | detect、segment | 覆盖最主流人工标注和训练场景，控制首版测试矩阵 |
-| OBB | excluded | 推迟到后续版本，不进入首发维护范围 |
-| classify | excluded | 目录型数据结构和训练流程不同，推迟到后续版本 |
+| TaskType | detect、segment、obb、classify | 复用固定 YoloWebAgent 快照的成熟任务契约，保持独立运行时 |
+| OBB | included | 使用绝对像素中心、尺寸、角度持久化与 YOLO 八点标签 |
+| classify | included | 每张图一个类别，使用 YOLO 分类目录布局 |
 | pose | excluded | 当前 Enterprise 闭环尚未完全收口 |
 | 数据交换 | YOLO import / export | 公开、直观、与训练链路直接相关 |
 | native archive | excluded | 不作为首版数据库迁移或项目交换格式 |
@@ -39,7 +39,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 
 ### 3.1 数据集与标注
 
-| 功能 | Starter v1 | Enterprise | 验收标准 |
+| 功能 | Community v2 | Enterprise | 验收标准 |
 |------|------------|------------|----------|
 | 创建、查看、修改、删除数据集 | included | included | 本地 SQLite 和文件目录一致 |
 | 图片目录扫描导入 | included | included | 识别支持格式并记录尺寸 |
@@ -47,21 +47,22 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 类别创建与查看 | included | included | class_index 稳定且不越界 |
 | detect bbox 标注 | included | included | 创建、拖拽、缩放、保存 |
 | segment polygon 标注 | included | included | 绘制、编辑、保存，至少 3 点 |
-| OBB / classify / pose | excluded | included | Starter API、UI、schema 不暴露 |
-| SAM / AI 自动标注 | excluded | included | Starter 无模型配置和预测表 |
+| OBB / classify | included | included | Starter API、UI、schema、YOLO 交换与训练闭环可用 |
+| pose | excluded | included | 不在 Community v2 范围 |
+| SAM 交互建议 | included | included | 仅 segment 框/点提示，多边形须人工确认保存；不含批量自动标注 |
 | 基础数据集校验 | included | included | 坐标、类别、空标注、格式问题可返回 |
 | 高级质量报告 | excluded | included | Starter 不迁移 quality service |
 | split 持久化 | included | included | 导出和训练复用已有 split |
-| YOLO 导入 | included | included | detect / segment 数据可导入 |
-| YOLO 导出 | included | included | detect / segment 可训练数据结构正确 |
+| YOLO 导入 | included | included | detect / segment / OBB 标签和 classify 目录均可导入 |
+| YOLO 导出 | included | included | 对应任务可训练数据结构正确 |
 | native / COCO 数据交换 | excluded | included | Starter 不暴露相关端点 |
 
 ### 3.2 YOLO 训练
 
-| 功能 | Starter v1 | Enterprise | 验收标准 |
+| 功能 | Community v2 | Enterprise | 验收标准 |
 |------|------------|------------|----------|
 | 训练默认值与预览 | included | included | 输出解析后的最终配置和风险提示 |
-| 本地训练任务创建 | included | included | detect / segment 权重族匹配 |
+| 本地训练任务创建 | included | included | detect / segment / OBB / classify 权重族匹配 |
 | 单机任务队列 | included | included | 同时只运行允许数量的任务 |
 | 任务状态、日志、摘要 | included | included | 前端可持续查看 |
 | 停止训练 | included | included | 进程和状态可收敛 |
@@ -80,7 +81,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 备注、归档、恢复、删除 | included | included | 数据库状态一致 |
 | PT 下载 | included | included | 只访问受管模型文件 |
 | ONNX FP32 导出 | included | included | 从 PT 生成有效 `.onnx` 并可下载 |
-| 外部 PT 导入 | excluded | included | Starter v1 不提供导入中心 |
+| 外部 PT 导入 | excluded | included | Community v2 不提供导入中心 |
 | 模型比较 | excluded | included | 无 compare API 和 UI |
 | 模型快速测试 | excluded | included | 无 test / save-test API |
 | 独立 Evaluation | excluded | included | 无评估任务和错误样本 |
@@ -89,7 +90,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 
 ### 3.4 产品与运维
 
-| 功能 | Starter v1 | Enterprise | 验收标准 |
+| 功能 | Community v2 | Enterprise | 验收标准 |
 |------|------------|------------|----------|
 | 本地单用户 | included | supported | 默认只监听 localhost |
 | 登录 / RBAC / 用户管理 | excluded | included | Starter 无 AuthProvider 和用户表 |
@@ -103,11 +104,11 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 
 ## 4. 发布成功标准
 
-Starter v1 必须在全新环境中完成：
+Community v2 必须在全新环境中完成：
 
 1. 创建数据集并扫描图片目录。
 2. 创建类别并完成 bbox 或 polygon 标注。
-3. 校验并导出 YOLO detect / segment 数据集。
+3. 校验并导出任一支持的 YOLO detect / segment / OBB / classify 数据集。
 4. 使用支持的基础权重发起本地训练。
 5. 查看任务状态、日志和训练摘要。
 6. 获得并管理 best.pt / last.pt。
@@ -117,5 +118,5 @@ Starter v1 必须在全新环境中完成：
 ## 5. 变更规则
 
 - Phase 2 开始后新增能力必须显式修改本矩阵，并同步调整工作量、测试和发布门槛。
-- OBB、classify、native archive、模型快速测试和 Windows 正式支持属于后续候选，不得在迁移中隐式带入。
+- native archive、模型快速测试和 Windows 正式支持属于后续候选，不得在迁移中隐式带入。
 - 如果某个排除功能被核心代码直接 import，应重写依赖边界，而不是把整个商业模块复制进 Starter。
