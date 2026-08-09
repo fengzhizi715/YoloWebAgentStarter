@@ -75,7 +75,11 @@ Starter 没有认证、授权、TLS 终止或多用户隔离能力。它刻意�
 | 访问控制与部署 | 不提供 | 提供 Enterprise 专属控制与交付能力 |
 | 自动标注、Agent、Workflow、评估 | 不提供 | Enterprise 产品线提供 |
 
-本仓库尚未配置公开的 Enterprise 联系入口。维护者必须在营销发布前替换为已批准的销售或联系 URL；在此之前，常规 issue 渠道仅用于 Starter 的缺陷反馈。
+### Enterprise 联系入口
+
+> Enterprise 官网正在备案中，正式的产品介绍与联系入口将在备案完成后公布。
+
+在正式 URL 发布前，常规 issue 渠道仅用于 Starter 的缺陷反馈；维护者仍需在营销发布前替换为已批准的销售或联系 URL。
 
 ## 开发检查
 
