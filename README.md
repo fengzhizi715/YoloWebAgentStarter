@@ -1,29 +1,29 @@
 # YoloWebAgentStarter
 
-YoloWebAgentStarter is a local, open-source workspace for building YOLO datasets. The first public slice focuses on a dependable data loop:
+YoloWebAgentStarter 是用于构建 YOLO 数据集的本地开源工作台。首个公开版本聚焦于可靠的数据闭环：
 
 ```text
-images → dataset → bbox / polygon annotation → validation → YOLO import / export
+图片 → 数据集 → bbox / polygon 标注 → 校验 → YOLO 导入 / 导出
 ```
 
-The Starter repository is independent from YoloWebAgent Enterprise. It has its own Git history, SQLite database, managed data directory, API, and frontend build.
+Starter 仓库独立于 YoloWebAgent Enterprise，拥有自己的 Git 历史、SQLite 数据库、受管数据目录、API 与前端构建产物。
 
-## Current scope
+## 当前范围
 
-- Dataset, class, image, and split management
-- Browser image upload and restricted local-directory scanning
-- Detect bbox and segment polygon annotation
-- Dataset validation
-- YOLO detect/segment ZIP import and export
-- Local YOLO detect/segment training with queued tasks, logs, progress, stop control, and best/last checkpoints
-- Managed model versions from training artifacts, PT downloads, and ONNX FP32 export
-- Local single-user operation, bound to `127.0.0.1` by default
+- 数据集、类别、图片与 split 管理
+- 浏览器图片上传与受限的本地目录扫描
+- detect 的 bbox 标注与 segment 的 polygon 标注
+- 数据集校验
+- YOLO detect/segment ZIP 导入与导出
+- 本地 YOLO detect/segment 训练：队列任务、日志、进度、停止控制与 best/last checkpoint
+- 从训练产物创建的受管模型版本、PT 下载与 ONNX FP32 导出
+- 本地单用户运行，默认绑定 `127.0.0.1`
 
-Agent workflows, automatic annotation, evaluation, deployment runtimes, OBB, pose, and classify are not part of this implementation slice.
+Agent 工作流、自动标注、评估、部署运行时、OBB、pose 与 classify 不属于当前实现范围。
 
-## Quick start
+## 快速开始
 
-Requirements: Python 3.11 or 3.12 (3.12 is the release-tested version), Node.js 20+.
+要求：Python 3.11 或 3.12（已使用 3.12 完成发布验证），Node.js 20+。
 
 ```bash
 python3.12 -m venv .venv
@@ -32,52 +32,52 @@ npm --prefix frontend install
 ./scripts/run-backend.sh
 ```
 
-In another terminal:
+在另一个终端中运行：
 
 ```bash
 ./scripts/run-frontend.sh
 ```
 
-Open <http://127.0.0.1:5173>. The API listens on <http://127.0.0.1:8000>.
+打开 <http://127.0.0.1:5173>，API 监听 <http://127.0.0.1:8000>。
 
-Use Python 3.11 or 3.12 to create `.venv`. The first use of a named YOLO weight such as `yolo11n.pt` may download it. Do not place model weights in arbitrary filesystem locations: local paths accepted by a training task must be under the managed `data/models/` directory.
+请使用 Python 3.11 或 3.12 创建 `.venv`。首次使用 `yolo11n.pt` 等命名 YOLO 权重时，Ultralytics 可能下载该权重。请勿将模型权重放在任意文件系统位置：训练任务仅接受 `data/models/` 受管目录中的本地路径。
 
-For a five-minute walk-through, configuration examples, and troubleshooting, see [docs/quick-start.md](docs/quick-start.md). To generate a tiny disposable YOLO demo dataset, run `./.venv/bin/python scripts/create_tiny_demo.py /tmp/ywa-tiny-demo`.
+请参阅 [docs/quick-start.md](docs/quick-start.md) 获取五分钟上手、配置示例与故障排查。执行 `./.venv/bin/python scripts/create_tiny_demo.py /tmp/ywa-tiny-demo` 可生成一个临时的微型 YOLO 示例数据集。
 
-The backend upgrades the SQLite database to the current Alembic revision at startup. To run it explicitly:
+后端启动时会将 SQLite 数据库升级到当前 Alembic revision。如需显式执行：
 
 ```bash
 PYTHONPATH=backend .venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
 
-Training uses the dataset's persisted `train` and `val` image splits. Create at least one image in each split, validate the dataset, then open the `训练` workspace. Ultralytics is installed with the backend requirements; the first use of a named weight such as `yolo11n.pt` may download that weight.
+训练会使用数据集中持久化的 `train` 与 `val` 图片 split。请确保每个 split 至少包含一张图片，完成数据集校验后，再打开 `训练` 工作区。Ultralytics 随后端依赖一起安装；首次使用 `yolo11n.pt` 等命名权重时可能下载该权重。
 
-Completed training automatically registers `best.pt` and `last.pt` under the managed model directory. Open the `模型` workspace to edit metadata, archive or restore a model, download PT, or create a deduplicated ONNX FP32 export.
+训练完成后，`best.pt` 与 `last.pt` 会自动登记到受管模型目录。打开 `模型` 工作区可编辑元数据、归档或恢复模型、下载 PT，或创建去重的 ONNX FP32 导出。
 
-## Data and import boundaries
+## 数据与导入边界
 
-By default, all runtime state is placed in `./data` and is ignored by Git. Browser uploads are copied into the managed dataset directory.
+默认情况下，所有运行时状态均写入 `./data`，且该目录已被 Git 忽略。浏览器上传的图片会复制到受管数据集目录。
 
-Server-side directory scanning is restricted to `YWA_IMPORT_ROOT` (default: `./data/imports`). Put images below that directory and submit a relative path from the UI. Absolute paths outside the import root are rejected.
+服务端目录扫描仅允许访问 `YWA_IMPORT_ROOT`（默认：`./data/imports`）以内的路径。请将图片放在该目录下，并在 UI 中提交相对路径；导入根目录外的绝对路径会被拒绝。
 
-Configuration is documented in [backend/.env.example](backend/.env.example).
+配置项见 [backend/.env.example](backend/.env.example)。
 
-## Local-only security boundary
+## 仅限本地的安全边界
 
-Starter has no authentication, authorization, TLS termination, or multi-user isolation. It is deliberately bound to `127.0.0.1` by default and is **not** a public-server deployment template. Do not bind it to `0.0.0.0`, forward its port, or put it behind a public reverse proxy without adding an appropriate security layer. See [SECURITY.md](SECURITY.md) and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) before distributing a build.
+Starter 没有认证、授权、TLS 终止或多用户隔离能力。它刻意默认绑定到 `127.0.0.1`，**不是**可直接公网部署的模板。不要绑定到 `0.0.0.0`、转发端口，或在未补充适当安全层的情况下放到公网反向代理之后。发布构建前请阅读 [SECURITY.md](SECURITY.md) 与 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)。
 
-## Starter and Enterprise
+## Starter 与 Enterprise
 
-| Capability | Starter | Enterprise |
+| 能力 | Starter | Enterprise |
 |---|---|---|
-| Detect and segment dataset workflow | Local single-user | Collaborative and governed workflows |
-| Training and model artifacts | Local FIFO queue; PT and static FP32 ONNX | Managed automation, evaluation, deployment, and operations |
-| Access control and deployment | Not included | Product-specific enterprise controls and delivery |
-| Automatic annotation, Agent, Workflow, evaluation | Not included | Available in the Enterprise product line |
+| detect 与 segment 数据集流程 | 本地单用户 | 协作式且受治理的工作流 |
+| 训练与模型产物 | 本地 FIFO 队列；PT 与静态 FP32 ONNX | 受管自动化、评估、部署与运维 |
+| 访问控制与部署 | 不提供 | 提供 Enterprise 专属控制与交付能力 |
+| 自动标注、Agent、Workflow、评估 | 不提供 | Enterprise 产品线提供 |
 
-The public Enterprise contact endpoint has not yet been configured for this repository. Maintainers must replace this notice with an approved sales or contact URL before a marketing release; until then, use the repository's normal issue channel for Starter bug reports only.
+本仓库尚未配置公开的 Enterprise 联系入口。维护者必须在营销发布前替换为已批准的销售或联系 URL；在此之前，常规 issue 渠道仅用于 Starter 的缺陷反馈。
 
-## Development checks
+## 开发检查
 
 ```bash
 PYTHONPATH=backend .venv/bin/pytest backend/tests
@@ -85,10 +85,10 @@ npm --prefix frontend test
 npm --prefix frontend run build
 ```
 
-See [phase1_scope.md](phase1_scope.md), [migration_matrix.md](migration_matrix.md), and [source_snapshot.md](source_snapshot.md) for the product boundary and migration provenance. Third-party and model-weight distribution notes are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+产品边界与迁移来源请参见 [phase1_scope.md](phase1_scope.md)、[migration_matrix.md](migration_matrix.md) 与 [source_snapshot.md](source_snapshot.md)。第三方依赖与模型权重的分发说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-## Known limitations
+## 已知限制
 
-- This is a local, single-user application. It has no authentication and should not be exposed directly to the public internet.
-- The current slice does not include automatic annotation, evaluation, deployment, OBB, pose, or classify.
-- The directory scanner accepts paths only below `YWA_IMPORT_ROOT`; browser uploads are the portable default.
+- 这是本地单用户应用，没有认证能力，不应直接暴露到公网。
+- 当前版本不包含自动标注、评估、部署、OBB、pose 或 classify。
+- 目录扫描仅接受 `YWA_IMPORT_ROOT` 以下路径；浏览器上传是可移植的默认方式。

@@ -1,27 +1,27 @@
-# YoloWebAgentStarter contributor notes
+# YoloWebAgentStarter 贡献说明
 
-YoloWebAgentStarter is the independent community edition of YoloWebAgent. It must not import, read, or depend on the Enterprise repository at runtime.
+YoloWebAgentStarter 是 YoloWebAgent 的独立社区版。运行时不得 import、读取或依赖 Enterprise 仓库。
 
-## Product boundary
+## 产品边界
 
-- Starter v1 supports `detect` and `segment` only.
-- Core flow: images → dataset → bbox/polygon annotation → validation → YOLO import/export → local training → managed PT/ONNX artifacts.
-- Training is local and queue-backed; model versions are created only from managed training artifacts.
-- Auth, RBAC, License, Agent, Workflow, Evaluation, Deployment, SAM, automatic annotation, OBB, pose, and classify are out of scope.
-- The service is local single-user software and binds to `127.0.0.1` by default.
+- Starter v1 仅支持 `detect` 与 `segment`。
+- 核心流程：图片 → 数据集 → bbox/polygon 标注 → 校验 → YOLO 导入/导出 → 本地训练 → 受管 PT/ONNX 产物。
+- 训练在本地以队列方式运行；模型版本只能由受管训练产物创建。
+- Auth、RBAC、License、Agent、Workflow、Evaluation、Deployment、SAM、自动标注、OBB、pose 和 classify 均不在范围内。
+- 服务仅面向本地单用户，默认绑定 `127.0.0.1`。
 
-## Engineering rules
+## 工程规则
 
-- Python dependencies belong in the repository `.venv`; never install into system Python.
-- API routes only adapt HTTP requests. Business logic belongs in domain services.
-- File IO goes through `backend/app/core/storage.py` or a named domain boundary.
-- Persist annotation coordinates in absolute image pixels. Canvas state is not a persistence schema.
-- Reuse persisted image splits in validation and YOLO export.
-- New schema changes require Alembic migrations. Do not add runtime SQLite patchers.
-- Frontend API calls belong under `frontend/src/api/`; page components do not hardcode API URLs.
-- Keep source attribution in `source_snapshot.md`; never copy the Enterprise `.git` directory or migration history.
+- Python 依赖必须安装在仓库的 `.venv` 中；不得安装到系统 Python。
+- API 路由只负责适配 HTTP 请求；业务逻辑必须位于领域服务中。
+- 文件 IO 必须经由 `backend/app/core/storage.py` 或明确命名的领域边界。
+- 标注坐标必须以图片绝对像素持久化；Canvas 状态不是持久化 schema。
+- 校验与 YOLO 导出必须复用已持久化的图片 split。
+- 新 schema 变更必须提供 Alembic migration；不得添加运行时 SQLite patcher。
+- 前端 API 调用必须置于 `frontend/src/api/`；页面组件不得硬编码 API URL。
+- 在 `source_snapshot.md` 中保留来源归属；不得复制 Enterprise 的 `.git` 目录或 migration 历史。
 
-## Verification
+## 验证
 
 ```bash
 PYTHONPATH=backend .venv/bin/pytest backend/tests
