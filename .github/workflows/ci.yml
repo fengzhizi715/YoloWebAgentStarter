@@ -36,3 +36,17 @@ jobs:
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend test
       - run: npm --prefix frontend run build
+
+  cpu-smoke:
+    runs-on: ubuntu-latest
+    env:
+      MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+      YOLO_CONFIG_DIR: ${{ runner.temp }}/ultralytics
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -r backend/requirements.txt
+      - run: PYTHONPATH=backend .venv/bin/python scripts/run_cpu_smoke.py

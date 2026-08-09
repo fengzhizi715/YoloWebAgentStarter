@@ -16,7 +16,7 @@ This file is a release checklist, not legal advice. Before a public release, the
 
 ## Required release review
 
-1. Generate and retain an SBOM or package-license report for the exact Python and npm lockfiles used in the release.
+1. Regenerate and review [`docs/dependency-audit.md`](docs/dependency-audit.md) with `./.venv/bin/python scripts/generate_dependency_audit.py`; it records exact installed Python packages and npm lockfile packages, including missing license metadata.
 2. Do not add wheels, weights, exported models, datasets, screenshots, or videos until their origin and redistribution terms are recorded.
 3. Re-run a secret scan and confirm that no private endpoints, customer records, local absolute paths, or commercial-license files are added.
 4. Keep the upstream provenance described in `source_snapshot.md` and `NOTICE`.

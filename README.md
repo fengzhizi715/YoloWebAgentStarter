@@ -26,7 +26,7 @@ Agent workflows, automatic annotation, evaluation, deployment runtimes, OBB, pos
 Requirements: Python 3.11 or 3.12 (3.12 is the release-tested version), Node.js 20+.
 
 ```bash
-.venv/bin/python --version  # use Python 3.11/3.12; create it if it does not exist
+python3.12 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 npm --prefix frontend install
 ./scripts/run-backend.sh
@@ -40,7 +40,7 @@ In another terminal:
 
 Open <http://127.0.0.1:5173>. The API listens on <http://127.0.0.1:8000>.
 
-If `.venv` does not exist, create it with a supported interpreter first, for example `python3.12 -m venv .venv`. The first use of a named YOLO weight such as `yolo11n.pt` may download it. Do not place model weights in arbitrary filesystem locations: local paths accepted by a training task must be under the managed `data/models/` directory.
+Use Python 3.11 or 3.12 to create `.venv`. The first use of a named YOLO weight such as `yolo11n.pt` may download it. Do not place model weights in arbitrary filesystem locations: local paths accepted by a training task must be under the managed `data/models/` directory.
 
 For a five-minute walk-through, configuration examples, and troubleshooting, see [docs/quick-start.md](docs/quick-start.md). To generate a tiny disposable YOLO demo dataset, run `./.venv/bin/python scripts/create_tiny_demo.py /tmp/ywa-tiny-demo`.
 
