@@ -11,9 +11,6 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
-    env:
-      MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
-      YOLO_CONFIG_DIR: ${{ runner.temp }}/ultralytics
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -22,7 +19,13 @@ jobs:
       - run: python -m venv .venv
       - run: .venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
       - run: PYTHONPATH=backend .venv/bin/python -m compileall -q backend/app
+        env:
+          MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+          YOLO_CONFIG_DIR: ${{ runner.temp }}/ultralytics
       - run: PYTHONPATH=backend .venv/bin/pytest backend/tests
+        env:
+          MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+          YOLO_CONFIG_DIR: ${{ runner.temp }}/ultralytics
 
   frontend:
     runs-on: ubuntu-latest
@@ -39,9 +42,6 @@ jobs:
 
   cpu-smoke:
     runs-on: ubuntu-latest
-    env:
-      MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
-      YOLO_CONFIG_DIR: ${{ runner.temp }}/ultralytics
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,3 +50,6 @@ jobs:
       - run: python -m venv .venv
       - run: .venv/bin/pip install -r backend/requirements.txt
       - run: PYTHONPATH=backend .venv/bin/python scripts/run_cpu_smoke.py
+        env:
+          MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+          YOLO_CONFIG_DIR: ${{ runner.temp }}/ultralytics
