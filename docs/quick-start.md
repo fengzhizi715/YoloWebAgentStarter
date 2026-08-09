@@ -8,16 +8,16 @@ Use Python 3.11 or 3.12 and Node.js 20 or newer. From the repository root:
 python3.12 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 npm --prefix frontend install
-./scripts/run-backend.sh
+./run-backend.sh
 ```
 
 Start the frontend in another terminal:
 
 ```bash
-./scripts/run-frontend.sh
+./run-frontend.sh
 ```
 
-Open `http://127.0.0.1:5173`. Both development servers are local-only by default.
+Open `http://127.0.0.1:5173`. Both development servers are local-only by default. Alternatively, run `./run-all.sh` from the repository root to start both processes; `Ctrl+C` stops them together.
 
 ## 2. Create data and annotate
 

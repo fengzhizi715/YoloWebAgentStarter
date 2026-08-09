@@ -29,16 +29,18 @@ Agent 工作流、自动标注、评估、部署运行时、OBB、pose 与 class
 python3.12 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 npm --prefix frontend install
-./scripts/run-backend.sh
+./run-backend.sh
 ```
 
 在另一个终端中运行：
 
 ```bash
-./scripts/run-frontend.sh
+./run-frontend.sh
 ```
 
 打开 <http://127.0.0.1:5173>，API 监听 <http://127.0.0.1:8000>。
+
+也可以在一个终端中执行 `./run-all.sh` 同时启动前后端；按 `Ctrl+C` 会停止两个进程。
 
 请使用 Python 3.11 或 3.12 创建 `.venv`。首次使用 `yolo11n.pt` 等命名 YOLO 权重时，Ultralytics 可能下载该权重。请勿将模型权重放在任意文件系统位置：训练任务仅接受 `data/models/` 受管目录中的本地路径。
 
