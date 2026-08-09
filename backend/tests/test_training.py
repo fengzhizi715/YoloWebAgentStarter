@@ -206,6 +206,35 @@ def test_training_rejects_local_weight_outside_managed_models(client, tmp_path):
     assert response.json()["error"]["code"] == "model_path_outside_managed_dir"
 
 
+def test_artifact_registration_failure_retains_training_result(client, tmp_path, monkeypatch):
+    executable = tmp_path / "fake-yolo"
+    fake_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+
+    def fail_registration(self, session, task):
+        raise RuntimeError("model registry unavailable")
+
+    monkeypatch.setattr("app.models.service.ModelService.register_training_artifacts", fail_registration)
+    dataset_id, _ = prepared_dataset(client)
+    response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "name": "artifact-registration-failure", "model": "yolo11n.pt", "epochs": 1, "batch_size": 1},
+    )
+    assert response.status_code == 201, response.text
+
+    task = wait_for_terminal(client, response.json()["id"])
+    assert task["status"] == "failed"
+    assert task["finished_at"] is not None
+    assert task["best_model_path"].endswith("best.pt")
+    assert task["last_model_path"].endswith("last.pt")
+    assert task["metrics_json"]
+    assert "model registry unavailable" in task["error_message"]
+    summary = client.get(f"/api/training/tasks/{task['id']}/summary").json()
+    assert summary["status"] == "failed"
+    assert summary["checkpoints"]["best"].endswith("best.pt")
+    assert client.get(f"/api/models?dataset_id={dataset_id}").json()["total"] == 0
+
+
 def test_training_rejects_missing_validation_split(client):
     dataset_id, _ = prepared_dataset(client)
     images = client.get(f"/api/datasets/{dataset_id}/images").json()["items"]

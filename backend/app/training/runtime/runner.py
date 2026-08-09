@@ -159,6 +159,15 @@ class TrainingRunner:
                 )
                 log_store.append(task.error_message)
             if task.status == "completed" and self.storage is not None:
+                completion_state = {
+                    "best_model_path": task.best_model_path,
+                    "last_model_path": task.last_model_path,
+                    "metrics_json": dict(task.metrics_json or {}),
+                    "finished_at": task.finished_at,
+                    "progress_epoch": task.progress_epoch,
+                    "progress_total_epochs": task.progress_total_epochs,
+                    "progress_percent": task.progress_percent,
+                }
                 try:
                     from app.models.service import ModelService
 
@@ -168,6 +177,8 @@ class TrainingRunner:
                     task = session.get(TrainingTask, task_id)
                     if task is None:
                         return
+                    for field, value in completion_state.items():
+                        setattr(task, field, value)
                     task.status = "failed"
                     task.error_message = f"Training artifacts could not be registered: {exc}"
                     log_store.append(task.error_message)
