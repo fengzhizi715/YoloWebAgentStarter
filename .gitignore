@@ -15,3 +15,5 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 *.tsbuildinfo
 npm-debug.log*
+
+.idea/
