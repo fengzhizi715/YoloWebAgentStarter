@@ -4,7 +4,7 @@ This file is a release checklist, not legal advice. Before a public release, the
 
 ## What this repository distributes
 
-- Source code is MIT-licensed; see `LICENSE` and `NOTICE`.
+- The repository includes an MIT `LICENSE`, but it does not establish rights in code selectively derived from the recorded YoloWebAgent snapshot. That source-rights question is a blocking release gate; see [`docs/provenance/UPSTREAM_AUTHORIZATION.md`](docs/provenance/UPSTREAM_AUTHORIZATION.md).
 - Python dependencies are installed by `pip` from `backend/requirements*.txt`; wheels are not committed or redistributed by this repository.
 - Frontend dependencies are resolved from `frontend/package-lock.json`; `node_modules` is not committed or redistributed.
 - No pretrained weights, customer datasets, screenshots, videos, vendor wheels, or model artifacts are committed. Named Ultralytics YOLO or SAM weights are downloaded only on first use when configured.
@@ -21,4 +21,4 @@ When `YWA_SAM_MODEL` is configured, the same Ultralytics runtime also performs i
 1. Regenerate and review [`docs/dependency-audit.md`](docs/dependency-audit.md) with `./.venv/bin/python scripts/generate_dependency_audit.py`; it records exact installed Python packages and npm lockfile packages, including missing license metadata.
 2. Do not add wheels, weights, exported models, datasets, screenshots, or videos until their origin and redistribution terms are recorded.
 3. Re-run a secret scan and confirm that no private endpoints, customer records, local absolute paths, or commercial-license files are added.
-4. Keep the upstream provenance described in `source_snapshot.md` and `NOTICE`.
+4. Keep the upstream provenance described in `source_snapshot.md`, `migration_matrix.md`, and `NOTICE`; do not release until the upstream authorization gate is approved.

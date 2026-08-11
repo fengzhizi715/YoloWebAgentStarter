@@ -6,6 +6,7 @@ import posixpath
 import re
 import shutil
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 import yaml
@@ -22,6 +23,18 @@ from app.dataset.service import get_dataset, refresh_dataset_counts
 
 
 _SAFE_MEMBER = re.compile(r"^[^/]+(?:/[^/]+)*$")
+_MAX_DATA_YAML_BYTES = 1024 * 1024
+_MAX_LABEL_BYTES = 10 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class YoloArchiveLimits:
+    """Defence-in-depth limits for untrusted YOLO ZIP uploads."""
+
+    max_members: int = 2_000
+    max_member_bytes: int = 100 * 1024 * 1024
+    max_total_uncompressed_bytes: int = 250 * 1024 * 1024
+    max_compression_ratio: float = 100.0
 
 
 def _safe_member_name(name: str) -> str:
@@ -33,31 +46,62 @@ def _safe_member_name(name: str) -> str:
     return normalized
 
 
-def _archive_entries(payload: bytes) -> dict[str, bytes]:
+def _archive_entries(payload: bytes, limits: YoloArchiveLimits) -> tuple[zipfile.ZipFile, dict[str, zipfile.ZipInfo]]:
     try:
         archive = zipfile.ZipFile(io.BytesIO(payload))
     except zipfile.BadZipFile as exc:
         raise ValidationError("invalid_yolo_archive", "The uploaded file is not a valid ZIP archive.") from exc
-    entries: dict[str, bytes] = {}
-    with archive:
+    entries: dict[str, zipfile.ZipInfo] = {}
+    total_uncompressed_bytes = 0
+    try:
         for info in archive.infolist():
             if info.is_dir():
                 continue
             name = _safe_member_name(info.filename)
-            if info.file_size > 100 * 1024 * 1024:
+            if name in entries:
+                raise ValidationError("duplicate_archive_path", "The YOLO archive contains duplicate file paths.")
+            if len(entries) >= limits.max_members:
+                raise ValidationError("archive_too_many_members", "The YOLO archive contains too many files.")
+            if info.file_size > limits.max_member_bytes:
                 raise ValidationError("archive_member_too_large", "A YOLO archive member is too large.")
-            entries[name] = archive.read(info)
+            total_uncompressed_bytes += info.file_size
+            if total_uncompressed_bytes > limits.max_total_uncompressed_bytes:
+                raise ValidationError("archive_total_too_large", "The YOLO archive expands beyond the configured total size limit.")
+            if info.file_size and (not info.compress_size or info.file_size / info.compress_size > limits.max_compression_ratio):
+                raise ValidationError("archive_compression_ratio_exceeded", "A YOLO archive member exceeds the configured compression ratio limit.")
+            entries[name] = info
+    except Exception:
+        archive.close()
+        raise
     if not entries:
+        archive.close()
         raise ValidationError("empty_yolo_archive", "The YOLO archive is empty.")
-    return entries
+    return archive, entries
 
 
-def _names_from_yaml(entries: dict[str, bytes]) -> list[str]:
+def _read_archive_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, max_bytes: int) -> bytes:
+    if info.file_size > max_bytes:
+        raise ValidationError("archive_member_too_large", "A YOLO archive text member is too large.")
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        with archive.open(info) as source:
+            while chunk := source.read(1024 * 1024):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValidationError("archive_member_too_large", "A YOLO archive text member is too large.")
+                chunks.append(chunk)
+    except zipfile.BadZipFile as exc:
+        raise ValidationError("invalid_yolo_archive", "The YOLO archive contains a corrupt member.") from exc
+    return b"".join(chunks)
+
+
+def _names_from_yaml(archive: zipfile.ZipFile, entries: dict[str, zipfile.ZipInfo]) -> list[str]:
     yaml_name = next((name for name in entries if PurePosixPath(name).name.lower() in {"data.yaml", "dataset.yaml"}), None)
     if yaml_name is None:
         return []
     try:
-        document = yaml.safe_load(entries[yaml_name]) or {}
+        document = yaml.safe_load(_read_archive_member(archive, entries[yaml_name], _MAX_DATA_YAML_BYTES)) or {}
     except yaml.YAMLError as exc:
         raise ValidationError("invalid_dataset_yaml", "The YOLO data.yaml file is invalid.") from exc
     names = document.get("names", []) if isinstance(document, dict) else []
@@ -86,10 +130,10 @@ def _split_for_image(name: str, default: SplitName) -> SplitName:
     return default
 
 
-def _label_for_image(image_name: str, labels: dict[str, tuple[str, bytes]]) -> bytes | None:
+def _label_for_image(image_name: str, labels: dict[str, zipfile.ZipInfo]) -> zipfile.ZipInfo | None:
     key = _relative_key(image_name, "images")
     candidate = str(PurePosixPath(key).with_suffix(".txt"))
-    return labels.get(candidate, ("", b""))[1] or None
+    return labels.get(candidate)
 
 
 def _class_for_image(image_name: str) -> str | None:
@@ -401,99 +445,104 @@ def import_dataset(
     payload: bytes,
     dataset_payload: DatasetCreate,
     default_split: SplitName = "train",
+    limits: YoloArchiveLimits = YoloArchiveLimits(),
 ) -> tuple[Dataset, int, int]:
-    entries = _archive_entries(payload)
-    image_entries = {name: data for name, data in entries.items() if PurePosixPath(name).suffix.lower() in SUPPORTED_IMAGE_SUFFIXES}
-    if not image_entries:
-        raise ValidationError("no_images_in_archive", "The YOLO archive does not contain supported images.")
-    labels = {
-        _relative_key(name, "labels"): (name, data)
-        for name, data in entries.items()
-        if PurePosixPath(name).suffix.lower() == ".txt" and ("labels" in PurePosixPath(name).parts or PurePosixPath(name).name != "classes.txt")
-    }
-    if dataset_payload.task_type.value == "classify":
-        classification_classes = {_class_for_image(member_name) for member_name in image_entries}
-        if None in classification_classes:
-            raise ValidationError(
-                "invalid_classification_layout",
-                "Classification archives must use train|val|test/<class-name>/<image> paths.",
-            )
-        names = sorted(str(name) for name in classification_classes)
-    else:
-        names = _names_from_yaml(entries)
-        max_class_index = -1
-        if not names:
-            for content in labels.values():
-                for line in content[1].decode("utf-8", errors="ignore").splitlines():
-                    if line.strip():
-                        try:
-                            max_class_index = max(max_class_index, int(line.split()[0]))
-                        except (ValueError, IndexError):
-                            pass
-            names = [f"class_{index}" for index in range(max_class_index + 1)]
-    if not names:
-        raise ValidationError("no_classes_in_archive", "The YOLO archive does not define any classes.")
-
-    dataset = Dataset(
-        id=new_id("ds"),
-        name=dataset_payload.name,
-        description=dataset_payload.description,
-        task_type=dataset_payload.task_type.value,
-    )
-    session.add(dataset)
-    class_records = [ClassLabel(id=new_id("cls"), dataset_id=dataset.id, class_index=index, name=name, color="#22c55e") for index, name in enumerate(names)]
-    session.add_all(class_records)
-    class_ids = {item.class_index: item.id for item in class_records}
-    class_ids_by_name = {item.name: item.id for item in class_records}
-    staged_paths: list[tuple[str, str]] = []
-    imported_annotations = 0
+    archive, entries = _archive_entries(payload, limits)
     try:
-        session.flush()
-        for member_name, content in sorted(image_entries.items()):
-            image_id = new_id("img")
-            storage_name = storage.safe_storage_name(PurePosixPath(member_name).name, image_id)
-            width, height = storage.write_image(dataset.id, storage_name, content)
-            staged_paths.append((dataset.id, storage_name))
-            split = _split_for_image(member_name, default_split)
-            image = ImageItem(
-                id=image_id,
-                dataset_id=dataset.id,
-                file_name=PurePosixPath(member_name).name,
-                storage_name=storage_name,
-                width=width,
-                height=height,
-                split=split,
-                status="unannotated",
-            )
-            session.add(image)
+        image_entries = {name: info for name, info in entries.items() if PurePosixPath(name).suffix.lower() in SUPPORTED_IMAGE_SUFFIXES}
+        if not image_entries:
+            raise ValidationError("no_images_in_archive", "The YOLO archive does not contain supported images.")
+        labels = {
+            _relative_key(name, "labels"): info
+            for name, info in entries.items()
+            if PurePosixPath(name).suffix.lower() == ".txt" and ("labels" in PurePosixPath(name).parts or PurePosixPath(name).name != "classes.txt")
+        }
+        if dataset_payload.task_type.value == "classify":
+            classification_classes = {_class_for_image(member_name) for member_name in image_entries}
+            if None in classification_classes:
+                raise ValidationError(
+                    "invalid_classification_layout",
+                    "Classification archives must use train|val|test/<class-name>/<image> paths.",
+                )
+            names = sorted(str(name) for name in classification_classes)
+        else:
+            names = _names_from_yaml(archive, entries)
+            max_class_index = -1
+            if not names:
+                for info in labels.values():
+                    for line in _read_archive_member(archive, info, _MAX_LABEL_BYTES).decode("utf-8", errors="ignore").splitlines():
+                        if line.strip():
+                            try:
+                                max_class_index = max(max_class_index, int(line.split()[0]))
+                            except (ValueError, IndexError):
+                                pass
+                names = [f"class_{index}" for index in range(max_class_index + 1)]
+        if not names:
+            raise ValidationError("no_classes_in_archive", "The YOLO archive does not define any classes.")
+
+        dataset = Dataset(
+            id=new_id("ds"),
+            name=dataset_payload.name,
+            description=dataset_payload.description,
+            task_type=dataset_payload.task_type.value,
+        )
+        session.add(dataset)
+        class_records = [ClassLabel(id=new_id("cls"), dataset_id=dataset.id, class_index=index, name=name, color="#22c55e") for index, name in enumerate(names)]
+        session.add_all(class_records)
+        class_ids = {item.class_index: item.id for item in class_records}
+        class_ids_by_name = {item.name: item.id for item in class_records}
+        staged_paths: list[tuple[str, str]] = []
+        imported_annotations = 0
+        try:
             session.flush()
-            if dataset.task_type == "classify":
-                class_name = _class_for_image(member_name)
-                class_id = class_ids_by_name.get(class_name or "")
-                if class_id is None:
-                    raise ValidationError("invalid_classification_layout", "Image class folder is not defined by the archive.")
-                parsed = [
-                    Annotation(
-                        id=new_id("ann"),
-                        class_id=class_id,
-                        type="classify",
-                        source="imported",
-                    )
-                ]
-            else:
-                parsed = _parse_yolo_labels(_label_for_image(member_name, labels), dataset.task_type, width, height, class_ids)
-            for annotation in parsed:
-                annotation.image_id = image.id
-                annotation.dataset_id = dataset.id
-            session.add_all(parsed)
-            image.status = "annotated" if parsed else "unannotated"
-            imported_annotations += len(parsed)
-        refresh_dataset_counts(session, dataset.id)
-        session.commit()
-    except Exception:
-        session.rollback()
-        for stored_dataset_id, storage_name in staged_paths:
-            storage.image_path(stored_dataset_id, storage_name).unlink(missing_ok=True)
-        raise
-    session.refresh(dataset)
-    return dataset, len(image_entries), imported_annotations
+            for member_name, info in sorted(image_entries.items()):
+                image_id = new_id("img")
+                storage_name = storage.safe_storage_name(PurePosixPath(member_name).name, image_id)
+                try:
+                    with archive.open(info) as source:
+                        width, height = storage.write_image_stream(dataset.id, storage_name, source, max_bytes=limits.max_member_bytes)
+                except zipfile.BadZipFile as exc:
+                    raise ValidationError("invalid_yolo_archive", "The YOLO archive contains a corrupt image member.") from exc
+                staged_paths.append((dataset.id, storage_name))
+                split = _split_for_image(member_name, default_split)
+                image = ImageItem(
+                    id=image_id,
+                    dataset_id=dataset.id,
+                    file_name=PurePosixPath(member_name).name,
+                    storage_name=storage_name,
+                    width=width,
+                    height=height,
+                    split=split,
+                    status="unannotated",
+                )
+                session.add(image)
+                session.flush()
+                if dataset.task_type == "classify":
+                    class_name = _class_for_image(member_name)
+                    class_id = class_ids_by_name.get(class_name or "")
+                    if class_id is None:
+                        raise ValidationError("invalid_classification_layout", "Image class folder is not defined by the archive.")
+                    parsed = [
+                        Annotation(id=new_id("ann"), class_id=class_id, type="classify", source="imported")
+                    ]
+                else:
+                    label_info = _label_for_image(member_name, labels)
+                    label = _read_archive_member(archive, label_info, _MAX_LABEL_BYTES) if label_info else None
+                    parsed = _parse_yolo_labels(label, dataset.task_type, width, height, class_ids)
+                for annotation in parsed:
+                    annotation.image_id = image.id
+                    annotation.dataset_id = dataset.id
+                session.add_all(parsed)
+                image.status = "annotated" if parsed else "unannotated"
+                imported_annotations += len(parsed)
+            refresh_dataset_counts(session, dataset.id)
+            session.commit()
+        except Exception:
+            session.rollback()
+            for stored_dataset_id, storage_name in staged_paths:
+                storage.image_path(stored_dataset_id, storage_name).unlink(missing_ok=True)
+            raise
+        session.refresh(dataset)
+        return dataset, len(image_entries), imported_annotations
+    finally:
+        archive.close()

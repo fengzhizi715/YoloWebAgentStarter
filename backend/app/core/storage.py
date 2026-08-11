@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import re
 import shutil
 from pathlib import Path
+from typing import BinaryIO
 
 from PIL import Image, UnidentifiedImageError
 
@@ -71,9 +73,9 @@ class Storage:
         stem = _SAFE_NAME.sub("_", Path(source).stem).strip("._") or "image"
         return f"{image_id}_{stem}{suffix}"
 
-    def write_image(self, dataset_id: str, storage_name: str, content: bytes) -> tuple[int, int]:
-        destination = self.image_path(dataset_id, storage_name)
-        destination.write_bytes(content)
+    def _verify_image(self, destination: Path) -> tuple[int, int]:
+        """Validate a newly written managed image and return its dimensions."""
+
         try:
             with Image.open(destination) as image:
                 image.verify()
@@ -86,6 +88,34 @@ class Storage:
             destination.unlink(missing_ok=True)
             raise ValidationError("invalid_image_size", "Image dimensions must be greater than zero.")
         return width, height
+
+    def write_image_stream(
+        self,
+        dataset_id: str,
+        storage_name: str,
+        source: BinaryIO,
+        *,
+        max_bytes: int,
+        chunk_bytes: int = 1024 * 1024,
+    ) -> tuple[int, int]:
+        """Stream an image into managed storage without buffering the source in memory."""
+
+        destination = self.image_path(dataset_id, storage_name)
+        try:
+            total = 0
+            with destination.open("wb") as target:
+                while chunk := source.read(chunk_bytes):
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise ValidationError("image_too_large", "Image exceeds the configured archive member limit.")
+                    target.write(chunk)
+        except (OSError, ValidationError):
+            destination.unlink(missing_ok=True)
+            raise
+        return self._verify_image(destination)
+
+    def write_image(self, dataset_id: str, storage_name: str, content: bytes) -> tuple[int, int]:
+        return self.write_image_stream(dataset_id, storage_name, io.BytesIO(content), max_bytes=len(content))
 
     def copy_image(self, source: Path, dataset_id: str, storage_name: str) -> tuple[int, int]:
         try:

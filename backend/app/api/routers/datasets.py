@@ -33,7 +33,7 @@ from app.core.schemas import (
 from app.core.storage import Storage
 from app.core.task_types import TaskType
 from app.dataset.annotation.service import list_annotations, replace_annotations
-from app.dataset.exchange.yolo import export_dataset, import_dataset
+from app.dataset.exchange.yolo import YoloArchiveLimits, export_dataset, import_dataset
 from app.dataset.images import (
     add_uploaded_images,
     delete_image,
@@ -109,6 +109,12 @@ async def import_yolo_archive(
         content,
         DatasetCreate(name=name, description=description, task_type=task_type),
         default_split,
+        limits=YoloArchiveLimits(
+            max_members=settings.max_yolo_archive_members,
+            max_member_bytes=settings.max_yolo_archive_member_bytes,
+            max_total_uncompressed_bytes=settings.max_yolo_archive_uncompressed_bytes,
+            max_compression_ratio=settings.max_yolo_archive_compression_ratio,
+        ),
     )
     return YoloImportResponse(
         dataset=_dataset_response(dataset),

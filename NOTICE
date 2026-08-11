@@ -2,7 +2,9 @@ YoloWebAgentStarter
 Copyright 2026 YoloWebAgent contributors
 
 The initial implementation was selectively derived from the YoloWebAgent codebase at
-commit 701f6e5a63b73f39e35f48fb6de7d2414401875a. See source_snapshot.md for provenance.
+commit 701f6e5a63b73f39e35f48fb6de7d2414401875a. The source tree has no recorded
+top-level license or NOTICE, so this notice does not establish a right to relicense
+that material. Public releases are blocked pending the evidence in
+docs/provenance/UPSTREAM_AUTHORIZATION.md. See source_snapshot.md for provenance.
 
 Third-party dependencies retain their respective licenses.
-

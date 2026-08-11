@@ -173,6 +173,46 @@ def test_obb_yolo_import_rejects_non_rectangular_or_out_of_range_corners(client,
     assert message in response.json()["error"]["message"]
 
 
+@pytest.mark.parametrize(
+    ("settings", "members", "expected_code"),
+    [
+        ({"max_yolo_archive_members": 2}, [("data.yaml", b"names: [object]\n"), ("images/train/object.png", png_bytes()), ("labels/train/object.txt", b"0 0.5 0.5 0.2 0.2\n")], "archive_too_many_members"),
+        ({"max_yolo_archive_member_bytes": 32}, [("payload.bin", b"x" * 33)], "archive_member_too_large"),
+        ({"max_yolo_archive_uncompressed_bytes": 64}, [("first.bin", b"x" * 32), ("second.bin", b"x" * 33)], "archive_total_too_large"),
+    ],
+)
+def test_yolo_import_rejects_archive_count_and_size_limits(client, settings, members, expected_code):
+    client.app.state.settings = replace(client.app.state.settings, **settings)
+    archive_payload = io.BytesIO()
+    with zipfile.ZipFile(archive_payload, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in members:
+            archive.writestr(name, content)
+
+    response = client.post(
+        "/api/datasets/import/yolo",
+        data={"name": "limited", "task_type": "detect"},
+        files={"file": ("limited.zip", archive_payload.getvalue(), "application/zip")},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == expected_code
+
+
+def test_yolo_import_rejects_excessive_compression_ratio_before_extracting_members(client):
+    archive_payload = io.BytesIO()
+    with zipfile.ZipFile(archive_payload, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("highly-compressible.bin", b"0" * (256 * 1024))
+
+    response = client.post(
+        "/api/datasets/import/yolo",
+        data={"name": "zip-bomb", "task_type": "detect"},
+        files={"file": ("zip-bomb.zip", archive_payload.getvalue(), "application/zip")},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "archive_compression_ratio_exceeded"
+
+
 def test_classification_uses_yolo_class_directories(client):
     dataset_id = create_dataset(client, "classify")
     cat_id = client.post(f"/api/datasets/{dataset_id}/classes", json={"name": "cat"}).json()["id"]

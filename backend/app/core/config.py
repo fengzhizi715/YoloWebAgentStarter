@@ -22,6 +22,10 @@ class Settings:
     port: int = 8000
     cors_origins: tuple[str, ...] = ("http://127.0.0.1:5173", "http://localhost:5173")
     max_upload_bytes: int = 50 * 1024 * 1024
+    max_yolo_archive_members: int = 2_000
+    max_yolo_archive_member_bytes: int = 100 * 1024 * 1024
+    max_yolo_archive_uncompressed_bytes: int = 250 * 1024 * 1024
+    max_yolo_archive_compression_ratio: float = 100.0
     sam_model: str | None = None
     sam_device: str = "auto"
     sam_img_size: int = 1024
@@ -47,6 +51,10 @@ class Settings:
             port=int(os.getenv("YWA_PORT", "8000")),
             cors_origins=origins,
             max_upload_bytes=int(os.getenv("YWA_MAX_UPLOAD_MB", "50")) * 1024 * 1024,
+            max_yolo_archive_members=int(os.getenv("YWA_MAX_YOLO_ARCHIVE_MEMBERS", "2000")),
+            max_yolo_archive_member_bytes=int(os.getenv("YWA_MAX_YOLO_ARCHIVE_MEMBER_MB", "100")) * 1024 * 1024,
+            max_yolo_archive_uncompressed_bytes=int(os.getenv("YWA_MAX_YOLO_ARCHIVE_UNCOMPRESSED_MB", "250")) * 1024 * 1024,
+            max_yolo_archive_compression_ratio=float(os.getenv("YWA_MAX_YOLO_ARCHIVE_COMPRESSION_RATIO", "100")),
             sam_model=os.getenv("YWA_SAM_MODEL") or None,
             sam_device=os.getenv("YWA_SAM_DEVICE", "auto"),
             sam_img_size=int(os.getenv("YWA_SAM_IMGSZ", "1024")),

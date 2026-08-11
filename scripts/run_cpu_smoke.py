@@ -34,6 +34,20 @@ def _write_obb_demo(root: Path) -> None:
     )
 
 
+def _write_segment_demo(root: Path) -> None:
+    for split, color, count in (("train", "#7c3aed", 2), ("val", "#ea580c", 1)):
+        for index in range(count):
+            stem = f"{split}-{index + 1}"
+            _write_demo_image(root / "images" / split / f"{stem}.png", color)
+            label = root / "labels" / split / f"{stem}.txt"
+            label.parent.mkdir(parents=True, exist_ok=True)
+            label.write_text("0 0.25 0.25 0.75 0.25 0.75 0.75 0.25 0.75\n", encoding="utf-8")
+    (root / "data.yaml").write_text(
+        f"path: {root.as_posix()}\ntrain: images/train\nval: images/val\nnames:\n  0: square\n",
+        encoding="utf-8",
+    )
+
+
 def _write_classification_demo(root: Path) -> None:
     for split in ("train", "val"):
         _write_demo_image(root / split / "blue-square" / f"{split}-blue.png", "#2563eb")
@@ -79,6 +93,10 @@ def main() -> None:
         _write_obb_demo(obb_root)
         _train_cpu(YOLO("yolo11n-obb.yaml"), str(obb_root / "data.yaml"), run_root, "obb")
 
+        segment_root = root / "segment-dataset"
+        _write_segment_demo(segment_root)
+        _train_cpu(YOLO("yolo11n-seg.yaml"), str(segment_root / "data.yaml"), run_root, "segment")
+
         classify_root = root / "classify-dataset"
         _write_classification_demo(classify_root)
         _train_cpu(YOLO("yolo11n-cls.yaml"), str(classify_root), run_root, "classify")
@@ -86,7 +104,7 @@ def main() -> None:
         exported = export_fp32_onnx(checkpoint, root / "model.onnx")
         onnx.checker.check_model(exported)
         ort.InferenceSession(str(exported), providers=["CPUExecutionProvider"])
-        print("CPU detect, OBB, classify, and ONNX smoke passed.")
+        print("CPU detect, segment, OBB, classify, and ONNX smoke passed.")
 
 
 if __name__ == "__main__":

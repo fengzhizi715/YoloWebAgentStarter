@@ -246,7 +246,7 @@ function ValidationPanel({ report }: { report: ValidationReport }) {
   return <div className={report.valid ? "validation valid" : "validation invalid"}><strong>{report.valid ? "校验通过" : "发现需要处理的问题"}</strong><span>{report.error_count} errors · {report.warning_count} warnings</span>{report.issues.slice(0, 3).map((issue) => <small key={`${issue.code}-${issue.image_id ?? "dataset"}`}>{issue.level === "error" ? "!" : "·"} {issue.message}</small>)}</div>;
 }
 
-function AnnotationView(props: { dataset: Dataset; image: ImageItem; classes: ClassLabel[]; annotations: Annotation[]; activeClassId: string; onClassChange: (id: string) => void; onBack: () => void; onSave: (drafts: AnnotationDraft[]) => void; onSam: (box: BBox) => Promise<SamPrediction>; onSamPoints: (points: [number, number][]) => Promise<SamPrediction>; busy: boolean; samCapabilities?: SamCapabilities }) {
+export function AnnotationView(props: { dataset: Dataset; image: ImageItem; classes: ClassLabel[]; annotations: Annotation[]; activeClassId: string; onClassChange: (id: string) => void; onBack: () => void; onSave: (drafts: AnnotationDraft[]) => void; onSam: (box: BBox) => Promise<SamPrediction>; onSamPoints: (points: [number, number][]) => Promise<SamPrediction>; busy: boolean; samCapabilities?: SamCapabilities }) {
   const toDraft = (item: Annotation): AnnotationDraft => ({ id: item.id, class_id: item.class_id, type: item.type, bbox: item.bbox ?? undefined, polygon: item.polygon ?? undefined, obb: item.obb ?? undefined, source: item.source });
   const [drafts, setDrafts] = useState<AnnotationDraft[]>(props.annotations.map(toDraft));
   useEffect(() => setDrafts(props.annotations.map(toDraft)), [props.annotations]);
