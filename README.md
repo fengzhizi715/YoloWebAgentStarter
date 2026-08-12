@@ -1,9 +1,9 @@
 # YoloWebAgentStarter
 
-面向本地单用户的 YOLO 数据集工作台：完成图片/视频帧导入、人工标注、数据校验、YOLO/COCO 交换、本地训练、评估和受管模型产物的一条轻量闭环。
+面向本地单用户的 YOLO 数据集工作台：完成图片/视频帧导入、人工标注、数据校验、YOLO/COCO 交换、本地训练、原生 YOLO 评估和受管模型产物的一条轻量闭环。
 
 ```text
-图片 → 数据集 → 标注 → 校验 → YOLO 导入 / 导出 → 本地训练 → PT / ONNX
+图片 → 数据集 → 标注 → 校验 → YOLO 导入 / 导出 → 本地训练 → 受管 PT → split 评估 / FP32 ONNX
 ```
 
 > **发布状态：阻断。** 本仓库基于固定的 YoloWebAgent 快照进行选择性派生，但该上游树尚无可核验的顶层许可证或 NOTICE。仓库中的 MIT 文件不能单方面完成再许可；在取得权利人书面授权或可核验上游许可证前，**不得发布公开 release 或宣称为已获授权的开源衍生版本**。请先阅读[来源授权门槛](docs/provenance/UPSTREAM_AUTHORIZATION.md)、[逐模块来源审计](migration_matrix.md)和[source snapshot](source_snapshot.md)。
@@ -14,6 +14,7 @@
 - 用持久化的 `train` / `val` / `test` split 贯通校验、YOLO 导出和本地训练。
 - 提供 SAM 的 segment 交互建议；所有建议都必须由用户确认后按普通 polygon 标注保存。
 - 训练结果只以受管的 `best.pt`、`last.pt` 和静态 FP32 ONNX 产物形式进入模型库。
+- 对受管 PT 后台运行上游同款 Ultralytics `val`，保存原生指标、日志、图表和最多 200 个可审阅错误样本。
 - 默认只监听 `127.0.0.1`，数据、数据库、导出和训练文件均保留在本机。
 
 ## 功能一览
@@ -24,19 +25,20 @@
 | 标注 | detect bbox、segment polygon、OBB 选择/移动/缩放/旋转、单标签 classify |
 | SAM | segment 的框选/点选建议；未配置模型时仅提供明确标识的 review-only 框形建议 |
 | 数据交换 | YOLO detect / segment / OBB ZIP 导入与导出；YOLO classify 目录布局导入与导出；detect/segment COCO ZIP 导入与导出 |
-| 训练 | 本地 FIFO 队列、日志、进度、停止控制、从受管 last.pt 续跑、指标摘要/趋势、配置快照和 best/last checkpoint |
-| 模型 | 训练产物的受管 PT 下载、持久化图片快速测试、同数据集模型比较、可审阅预标注、四任务本地 YOLO val 评估/错误样本、去重 FP32 ONNX 导出 |
+| 训练 | 本地 FIFO 队列、日志、进度、停止控制、恢复中断任务或从受管 `last.pt` 创建继续训练任务、指标摘要/趋势、配置快照和 best/last checkpoint |
+| 评估 | 后台原生 YOLO `val`、持久化 split、任务状态与恢复、日志、混淆矩阵、可用 PR 曲线和最多 200 个错误样本；segment 分别保留 box/mask 指标与曲线 |
+| 模型 | 训练产物的受管 PT 下载、持久化图片快速测试、同数据集模型比较、可审阅预标注、去重 FP32 ONNX 导出 |
 | 数据质量 | 标注覆盖率、类别分布、小目标、重叠 bbox 和类别失衡提示 |
 | 安全边界 | 受管存储根目录、导入目录边界、ZIP 防资源耗尽限制、默认 localhost 绑定 |
 
 ### 任务支持
 
-| 任务 | 标注表示 | YOLO 交换 | 本地训练 |
-|---|---|---|---|
-| `detect` | bbox | 支持 | 支持 |
-| `segment` | polygon；可选 SAM 建议 | 支持 | 支持 |
-| `obb` | 绝对像素的中心、尺寸、角度 | 支持 | 支持 |
-| `classify` | 每张图片一个类别 | 标准 `split/class/image` 目录 | 支持 |
+| 任务 | 标注表示 | YOLO 交换 | 本地训练 | split 评估 |
+|---|---|---|---|---|
+| `detect` | bbox | 支持 | 支持 | box P/R/mAP、图表和错误样本 |
+| `segment` | polygon；可选 SAM 建议 | 支持 | 支持 | box/mask 两组 P/R/mAP、RLE 预测和图表 |
+| `obb` | 绝对像素的中心、尺寸、角度 | 支持 | 支持 | OBB 指标、图表和 polygon IoU 错误样本 |
+| `classify` | 每张图片一个类别 | 标准 `split/class/image` 目录 | 支持 | top-1 / top-5 指标 |
 
 不包含：登录/RBAC、协作、Agent、Workflow、无人值守批量自动标注、文本提示分割、Deployment、pose、云训练和分布式训练。完整边界见 [Community v2 功能矩阵](phase1_scope.md)。
 
@@ -74,8 +76,9 @@ npm --prefix frontend install
 3. 添加类别并标注：bbox、polygon、可旋转 OBB，或每图一个分类标签。
 4. 确保 `train` 与 `val` 都至少有一张图片，运行数据集校验。
 5. 导出/导入 YOLO 数据，或在训练页选择匹配的模型族并发起本地任务。
+6. 训练完成后进入“模型”工作区，对受管 PT 选择 `train`、`val` 或 `test` split 创建后台评估任务。
 
-训练完成后，`best.pt` 与 `last.pt` 会登记到受管模型目录；在“模型”工作区可下载 PT、编辑元数据、归档，或生成 FP32 ONNX。
+训练完成后，`best.pt` 与 `last.pt` 会登记到受管模型目录；在“模型”工作区可下载 PT、编辑元数据、归档、生成 FP32 ONNX，或查看评估历史、原生指标、图表、日志和错误样本。评估与 YOLO 导出复用图片已经持久化的 split，不会重新随机切分。
 
 更完整的操作步骤、SAM 说明和故障排查请见[五分钟上手](docs/quick-start.md)。可用以下命令生成可丢弃的微型 detect 数据集：
 
@@ -117,12 +120,34 @@ npm --prefix frontend install
 
 安全报告流程目前也是公开发布的阻断项；请阅读 [SECURITY.md](SECURITY.md)。发布前的全部检查见 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)。
 
+## 评估实现与产物
+
+评估仅接受 Starter 训练任务登记的受管 Ultralytics PT 模型。HTTP 路由创建任务后立即返回；本地后台 runner 执行与固定上游相同的原生 `val` 合约：
+
+```text
+yolo <detect|segment|obb|classify> val ... plots=True save_json=True exist_ok=True
+```
+
+- detect 与 OBB 保存 box 指标；segment 同时解析 box 和 mask 两组 precision、recall、mAP50、mAP50-95；classify 保存 top-1、top-5。
+- 产物通过受管 artifact API 提供，不允许请求评估目录外文件。通用任务使用 `PR_curve.png`；Ultralytics 8.3.40 的 segment 使用 `BoxPR_curve.png` 与 `MaskPR_curve.png`，页面会分别展示。
+- `predictions.json` 按 Ultralytics 8.3.40 的真实格式分析：detect 使用左上角 `xywh`，segment 使用 pycocotools RLE mask，OBB 使用 `rbox` / `poly`。
+- 错误样本包括 missed detection、false positive 和 low confidence；分析器使用已导出的同一 split 标签，最多持久化 200 条。classify 当前只展示原生指标，不生成目标级错误样本。
+- 服务重启时，运行中的任务会标记失败并保留错误信息；尚未开始的任务会重新提交本地 runner。
+
+图表只有在 Ultralytics 实际生成时才会出现。例如没有有效 TP 的极小随机模型可能不会生成 PR 曲线，但仍会产生指标、日志、混淆矩阵和预测 JSON。
+
+## 上游对齐与独立运行
+
+Community v2 的固定对齐基线是 YoloWebAgent commit `701f6e5a63b73f39e35f48fb6de7d2414401875a`。评估 runner、artifact manager、错误样本分析和详情面板沿用上游模块边界，并只裁剪到 detect、segment、OBB、classify；Ultralytics 8.3.40 文件名与 JSON 适配是该上游合约的兼容扩展。
+
+Starter 运行时不会 import、读取或依赖 YoloWebAgent/Enterprise 仓库，也不包含其 Auth、RBAC、License、Agent、Workflow、Evaluation 自动化回调、Deployment 或 pose 模块。逐文件关系见[迁移矩阵](migration_matrix.md)，固定快照与选择性抽取记录见[source snapshot](source_snapshot.md)。
+
 ## 项目结构
 
 ```text
-backend/app/       FastAPI、领域服务、SQLite/Alembic 和本地训练队列
-frontend/src/      React 标注工作台、训练与模型管理界面
-scripts/           微型数据集、CPU 烟雾测试和发布门槛脚本
+backend/app/       FastAPI、领域服务、SQLite/Alembic、本地训练队列和评估 runner
+frontend/src/      React 标注工作台、训练、模型管理和评估详情界面
+scripts/           微型数据集、四任务 CPU 训练/segment-val 烟雾测试和发布门槛脚本
 docs/              快速开始、依赖审计和来源授权材料
 data/              默认运行时目录（忽略，不提交）
 ```
@@ -140,7 +165,9 @@ npm --prefix frontend run build
 PYTHONPATH=backend .venv/bin/python scripts/run_cpu_smoke.py
 ```
 
-CPU 冒烟会实际运行 detect、segment、OBB、classify 的一轮微型训练，复用上游原生参数执行 segment `val(save_json=True, plots=True)`，并校验 box/mask 指标、评估产物和 detect ONNX 导出。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [CHANGELOG.md](CHANGELOG.md)。
+标准测试会直接调用 Ultralytics 8.3.40 的 detect、segment、OBB validator 生成真实 JSON 合约，再交给错误样本分析器验证。CPU 冒烟会实际运行四任务的一轮微型训练，复用上游原生参数执行 segment `val(save_json=True, plots=True)`，并校验 box/mask 八项指标、pycocotools RLE、混淆矩阵、预测 JSON 和 detect ONNX 导出。整个冒烟使用临时目录且不保留模型或数据集；首次运行可能需要等待 Matplotlib 字体缓存和 ONNX 导出。
+
+极小的离线随机模型不保证产生有效 TP，因此 CPU 冒烟不强制要求 PR 曲线存在；`BoxPR_curve.png` / `MaskPR_curve.png` 的 Ultralytics 8.3.40 命名契约由聚焦测试覆盖。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 参与贡献
 
