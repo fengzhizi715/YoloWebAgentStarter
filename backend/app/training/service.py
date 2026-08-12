@@ -47,15 +47,36 @@ class TrainingService:
         previous = self.get_task(session, task_id)
         if previous.status not in {"completed", "failed", "stopped"}:
             raise ValidationError("resume_task_not_finished", "Only completed, failed, or stopped training tasks can be resumed.")
+        if payload.resume_epoch and previous.status == "completed":
+            raise ValidationError(
+                "resume_completed_task",
+                "A completed task cannot restore epoch state; start a new task from last.pt with resume_epoch=false.",
+            )
+        if payload.resume_epoch and payload.epochs is not None and payload.epochs != previous.epochs:
+            raise ValidationError(
+                "resume_epochs_fixed",
+                "Epoch-state resume keeps the source task's total epochs; use resume_epoch=false to train additional epochs.",
+            )
         checkpoint = checkpoint_paths(previous.run_dir or "").get("last")
         if checkpoint is None:
             raise NotFoundError("resume_checkpoint_not_found", "This training task has no managed last.pt checkpoint.")
+        source_run_dir = self.storage.managed_training_path(previous.run_dir or "")
+        source_checkpoint = self.storage.managed_training_path(checkpoint)
+        if not source_run_dir.is_dir() or not source_checkpoint.is_file():
+            raise NotFoundError("resume_checkpoint_not_found", "This training task has no managed last.pt checkpoint.")
         source_config = dict(previous.config_json or {})
         source_config["name"] = (payload.name or f"{previous.name} (resume)").strip()
-        if payload.epochs is not None:
+        if payload.epochs is not None and not payload.resume_epoch:
             source_config["epochs"] = payload.epochs
         task_payload = TrainingTaskCreate.model_validate(source_config)
-        return self._create_task(session, task_payload, resume_checkpoint=Path(checkpoint), resume_source_task_id=previous.id)
+        return self._create_task(
+            session,
+            task_payload,
+            resume_checkpoint=source_checkpoint,
+            resume_run_dir=source_run_dir if payload.resume_epoch else None,
+            resume_epoch=payload.resume_epoch,
+            resume_source_task_id=previous.id,
+        )
 
     def _create_task(
         self,
@@ -63,6 +84,8 @@ class TrainingService:
         payload: TrainingTaskCreate,
         *,
         resume_checkpoint: Path | None = None,
+        resume_run_dir: Path | None = None,
+        resume_epoch: bool = False,
         resume_source_task_id: str | None = None,
     ) -> TrainingTaskResponse:
         dataset = get_dataset(session, payload.dataset_id)
@@ -76,10 +99,10 @@ class TrainingService:
         task_id = new_id("train")
         task_root = self.storage.training_task_dir(task_id)
         export_root = task_root / "dataset"
-        run_dir = task_root / "run"
+        run_dir = resume_run_dir if resume_run_dir is not None else task_root / "run"
         try:
             if resume_checkpoint is not None:
-                model_reference = str(self.storage.copy_training_checkpoint(resume_checkpoint, task_id))
+                model_reference = str(resume_checkpoint)
             export = export_dataset_directory(session, self.storage, dataset.id, export_root)
             data_yaml = str(export["data_yaml"])
             command = build_training_command(
@@ -96,7 +119,7 @@ class TrainingService:
                 optimizer=payload.optimizer,
                 lr0=payload.lr0,
                 patience=payload.patience,
-                resume=resume_checkpoint is not None,
+                resume=resume_epoch,
             )
             task = TrainingTask(
                 id=task_id,
@@ -116,7 +139,10 @@ class TrainingService:
                 optimizer=payload.optimizer,
                 lr0=payload.lr0,
                 patience=payload.patience,
-                config_json={**payload.model_dump(), "resume_source_task_id": resume_source_task_id} if resume_source_task_id else payload.model_dump(),
+                config_json={
+                    **payload.model_dump(),
+                    **({"resume_source_task_id": resume_source_task_id, "resume_epoch": resume_epoch} if resume_source_task_id else {}),
+                },
                 command_args_json=command.args,
                 command_preview=command.readable,
                 export_path=str(export["root"]),

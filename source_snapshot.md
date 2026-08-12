@@ -66,6 +66,7 @@ git -C /path/to/yolowebagent-source show 701f6e5a63b73f39e35f48fb6de7d2414401875
 - `backend/app/core/task_types.py`、`backend/app/core/schemas.py` 与 `backend/app/dataset/annotation/service.py` 的 OBB / classify task 与标注模型；
 - `backend/app/dataset/exchange/yolo/dataset_file_writer.py`、`label_writer.py` 的 OBB 八点 YOLO 标签与 classify 目录布局；
 - `backend/app/sam/schemas.py`、`backend/app/sam/backends/box_stub.py`、`backend/app/sam/ultralytics_backend.py` 的框/点提示、建议多边形和延迟加载模型边界。
+- `backend/app/evaluation/service.py`、`runner.py`、`artifacts.py`、`error_samples.py` 与前端评估详情面板的本地 `yolo val`、受管产物、日志和错误样本契约；Starter 仅保留 detect、segment、OBB、classify 范围。
 
 Starter 对这些能力保留独立的 SQLite schema、存储边界、路由和前端实现；不复制 Enterprise 的设置/Profile、Vision Provider、Agent、自动标注、文本分割或 deployment 模块，也不在运行时读取源仓库。
 

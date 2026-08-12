@@ -86,7 +86,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 外部 PT 导入 | excluded | included | Community v2 不提供导入中心 |
 | 模型比较 | included | included | 仅限同数据集、同任务模型的基础指标对比 |
 | 模型快速测试 | included | included | 受管 PT 可上传图片测试，支持 detect / segment / OBB / classify；结果和输入图持久化到受管模型目录 |
-| 独立 Evaluation | included | included | 按已保存 split 评估并持久化 TP/FP/FN、Precision/Recall/F1 与最多 200 个错误样本 |
+| 独立 Evaluation | included | included | 四任务复用已保存 split 和上游 YOLO val，持久化任务原生指标、图表与最多 200 个错误样本 |
 | TensorRT / OpenVINO / FP16 / INT8 | excluded | included | 无部署 runtime 和量化依赖 |
 | Benchmark / 部署包 / 内网下发 | excluded | included | 无相关表、API 和页面 |
 

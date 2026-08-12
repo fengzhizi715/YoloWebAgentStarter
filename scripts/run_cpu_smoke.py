@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -9,6 +10,7 @@ import onnxruntime as ort
 from PIL import Image, ImageDraw
 
 from app.models.onnx import export_fp32_onnx
+from app.models.evaluation_artifacts import EvaluationArtifactManager
 from create_tiny_demo import write_example
 
 
@@ -75,6 +77,52 @@ def _train_cpu(model, data: str, run_root: Path, name: str) -> Path:
     return checkpoint
 
 
+def _validate_segment_cpu(checkpoint: Path, data_yaml: Path, run_root: Path) -> None:
+    """Run the same native Ultralytics val contract as the upstream evaluation engine."""
+
+    from ultralytics import YOLO
+
+    result = YOLO(str(checkpoint)).val(
+        data=str(data_yaml),
+        split="val",
+        imgsz=64,
+        batch=1,
+        workers=0,
+        device="cpu",
+        conf=0.00001,
+        project=str(run_root),
+        name="segment-val",
+        exist_ok=True,
+        plots=True,
+        save_json=True,
+    )
+    metrics = result.results_dict
+    required_metrics = {
+        "metrics/precision(B)",
+        "metrics/recall(B)",
+        "metrics/mAP50(B)",
+        "metrics/mAP50-95(B)",
+        "metrics/precision(M)",
+        "metrics/recall(M)",
+        "metrics/mAP50(M)",
+        "metrics/mAP50-95(M)",
+    }
+    missing_metrics = required_metrics.difference(metrics)
+    if missing_metrics:
+        raise RuntimeError(f"Segment val did not return box/mask metrics: {sorted(missing_metrics)}")
+
+    artifacts = EvaluationArtifactManager().find_artifacts(run_root / "segment-val")
+    # A one-epoch randomly initialized offline model may have no true positives,
+    # in which case Ultralytics intentionally omits PR curves. The artifact-name
+    # contract for BoxPR/MaskPR is covered by focused tests.
+    missing_artifacts = [name for name in ("confusion_matrix", "predictions") if not artifacts[name]]
+    if missing_artifacts:
+        raise RuntimeError(f"Segment val did not produce managed artifacts: {missing_artifacts}")
+    predictions = json.loads(Path(artifacts["predictions"]).read_text(encoding="utf-8"))
+    if not predictions or not isinstance(predictions[0].get("segmentation"), dict):
+        raise RuntimeError("Segment val predictions.json does not contain Ultralytics RLE masks.")
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="ywa-cpu-smoke-") as temporary_directory:
         root = Path(temporary_directory)
@@ -95,7 +143,8 @@ def main() -> None:
 
         segment_root = root / "segment-dataset"
         _write_segment_demo(segment_root)
-        _train_cpu(YOLO("yolo11n-seg.yaml"), str(segment_root / "data.yaml"), run_root, "segment")
+        segment_checkpoint = _train_cpu(YOLO("yolo11n-seg.yaml"), str(segment_root / "data.yaml"), run_root, "segment")
+        _validate_segment_cpu(segment_checkpoint, segment_root / "data.yaml", run_root)
 
         classify_root = root / "classify-dataset"
         _write_classification_demo(classify_root)
@@ -104,7 +153,7 @@ def main() -> None:
         exported = export_fp32_onnx(checkpoint, root / "model.onnx")
         onnx.checker.check_model(exported)
         ort.InferenceSession(str(exported), providers=["CPUExecutionProvider"])
-        print("CPU detect, segment, OBB, classify, and ONNX smoke passed.")
+        print("CPU detect, segment train/val, OBB, classify, and ONNX smoke passed.")
 
 
 if __name__ == "__main__":

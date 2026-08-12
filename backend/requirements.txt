@@ -12,6 +12,9 @@ PyYAML==6.0.2
 # applies it on macOS, but the same training failure occurs on Linux and Windows.
 numpy>=1.23,<2.0.0
 ultralytics==8.3.40
+# Ultralytics segment val imports pycocotools.mask when save_json=True.
+# Keep the lower bound aligned with the pinned Ultralytics extra metadata.
+pycocotools>=2.0.7
 onnx>=1.17.0
 onnxruntime==1.27.0
 onnxscript==0.7.0

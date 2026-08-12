@@ -64,7 +64,11 @@ export function TrainingView({ dataset, onBack }: Props) {
   const resume = async () => {
     if (!selectedTask) return;
     setBusy(true); setError("");
-    try { const task = await api.resumeTrainingTask(selectedTask.id, { epochs }); setTasks((items) => [task, ...items]); setSelectedTask(task); }
+    try {
+      const restoreEpochState = selectedTask.status !== "completed";
+      const task = await api.resumeTrainingTask(selectedTask.id, restoreEpochState ? { resume_epoch: true } : { epochs, resume_epoch: false });
+      setTasks((items) => [task, ...items]); setSelectedTask(task);
+    }
     catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
 
@@ -81,7 +85,7 @@ export function TrainingView({ dataset, onBack }: Props) {
         <div className="detail-head"><div><span className="eyebrow">TASK DETAIL</span><h2>{selectedTask.name}</h2><p className="muted">{selectedTask.status} · {selectedTask.progress_epoch}/{selectedTask.progress_total_epochs || selectedTask.epochs} epochs · {selectedTask.progress_percent}%</p></div>
           <div className="detail-actions">
             {selectedTask.status === "running" || selectedTask.status === "pending" ? <button className="button danger" disabled={busy} onClick={stop}>停止训练</button> : <>
-              <button className="button primary" disabled={busy || !selectedTask.last_model_path} onClick={resume}>从 last.pt 续跑</button>
+              <button className="button primary" disabled={busy || !selectedTask.last_model_path} onClick={resume}>{selectedTask.status === "completed" ? "从 last.pt 新任务继续训练" : "恢复中断训练"}</button>
               {checkpointLinks?.best && selectedTask.best_model_path && <a className="button" href={checkpointLinks.best}>下载 best.pt</a>}
               {checkpointLinks?.last && selectedTask.last_model_path && <a className="button" href={checkpointLinks.last}>下载 last.pt</a>}
             </>}

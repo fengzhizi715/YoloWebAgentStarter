@@ -25,6 +25,7 @@ for arg in "$@"; do
     name=*) name="${arg#name=}" ;;
   esac
 done
+[ -z "$YWA_ARGS_CAPTURE" ] || printf '%s\n' "$@" > "$YWA_ARGS_CAPTURE"
 mkdir -p "$project/$name/weights"
 printf 'epoch,metrics/mAP50(B)\\n0,0.81\\n' > "$project/$name/results.csv"
 printf 'fake best' > "$project/$name/weights/best.pt"
@@ -119,6 +120,92 @@ def test_training_task_runs_and_persists_checkpoints(client, tmp_path, monkeypat
     assert models["total"] == 2
     best = next(item for item in models["items"] if item["artifact_type"] == "best")
     assert client.get(f"/api/models/{best['id']}/download").content == b"fake best"
+
+
+def test_completed_task_starts_new_training_from_selected_checkpoint(client, tmp_path, monkeypatch):
+    executable = tmp_path / "fake-yolo"
+    capture = tmp_path / "yolo-args.txt"
+    fake_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+    monkeypatch.setenv("YWA_ARGS_CAPTURE", str(capture))
+    dataset_id, _ = prepared_dataset(client)
+
+    source_response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "name": "source", "model": "yolo11n.pt", "epochs": 1, "batch_size": 1},
+    )
+    source = wait_for_terminal(client, source_response.json()["id"])
+    resumed_response = client.post(
+        f"/api/training/tasks/{source['id']}/resume",
+        json={"name": "continued", "epochs": 2, "resume_epoch": False},
+    )
+    assert resumed_response.status_code == 201, resumed_response.text
+    resumed = resumed_response.json()
+    assert resumed["model_path"] == source["last_model_path"]
+    assert resumed["run_dir"] != source["run_dir"]
+    assert resumed["epochs"] == 2
+    terminal = wait_for_terminal(client, resumed["id"])
+    assert terminal["status"] == "completed", terminal
+    args = capture.read_text(encoding="utf-8").splitlines()
+    assert f"model={source['last_model_path']}" in args
+    assert "resume=True" not in args
+    assert f"project={Path(resumed['run_dir']).parent}" in args
+    assert f"name={Path(resumed['run_dir']).name}" in args
+
+
+def test_interrupted_task_restores_epoch_state_in_source_run_directory(client, tmp_path, monkeypatch):
+    executable = tmp_path / "fake-yolo"
+    capture = tmp_path / "yolo-args.txt"
+    fake_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+    monkeypatch.setenv("YWA_ARGS_CAPTURE", str(capture))
+    dataset_id, _ = prepared_dataset(client)
+    source_response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "name": "interrupted", "model": "yolo11n.pt", "epochs": 4, "batch_size": 1},
+    )
+    source = wait_for_terminal(client, source_response.json()["id"])
+    with client.app.state.database.session_factory() as session:
+        from app.core.models import TrainingTask
+
+        source_task = session.get(TrainingTask, source["id"])
+        assert source_task is not None
+        source_task.status = "failed"
+        session.commit()
+
+    resumed_response = client.post(
+        f"/api/training/tasks/{source['id']}/resume",
+        json={"name": "restored", "resume_epoch": True},
+    )
+    assert resumed_response.status_code == 201, resumed_response.text
+    resumed = resumed_response.json()
+    assert resumed["model_path"] == source["last_model_path"]
+    assert resumed["run_dir"] == source["run_dir"]
+    assert resumed["epochs"] == source["epochs"]
+    terminal = wait_for_terminal(client, resumed["id"])
+    assert terminal["status"] == "completed", terminal
+    args = capture.read_text(encoding="utf-8").splitlines()
+    assert f"model={source['last_model_path']}" in args
+    assert "resume=True" in args
+    assert f"project={Path(source['run_dir']).parent}" in args
+    assert f"name={Path(source['run_dir']).name}" in args
+
+
+def test_completed_task_rejects_epoch_state_resume(client, tmp_path, monkeypatch):
+    executable = tmp_path / "fake-yolo"
+    fake_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+    dataset_id, _ = prepared_dataset(client)
+    source_response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "name": "finished", "model": "yolo11n.pt", "epochs": 1, "batch_size": 1},
+    )
+    source = wait_for_terminal(client, source_response.json()["id"])
+
+    response = client.post(f"/api/training/tasks/{source['id']}/resume", json={"resume_epoch": True})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "resume_completed_task"
 
 
 def test_model_metadata_and_onnx_lifecycle(client, tmp_path, monkeypatch):

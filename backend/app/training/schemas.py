@@ -30,6 +30,7 @@ class TrainingTaskCreate(BaseModel):
 class TrainingTaskResumeRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     epochs: int | None = Field(default=None, ge=1, le=10000)
+    resume_epoch: bool = True
 
 
 class TrainingTaskResponse(BaseModel):

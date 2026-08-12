@@ -4,9 +4,12 @@ from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_session, get_storage
+from app.api.dependencies import get_evaluation_runner, get_session, get_settings, get_storage
+from app.core.config import Settings
+from app.core.errors import ValidationError
 from app.core.storage import Storage
-from app.models.schemas import InferenceResult, ModelCompareRequest, ModelCompareResponse, ModelEvaluationRecordResponse, ModelEvaluationRequest, ModelTestRecordResponse, ModelVersionList, ModelVersionResponse, ModelVersionUpdate, PreAnnotationRequest, PreAnnotationResponse
+from app.models.schemas import InferenceResult, ModelCompareRequest, ModelCompareResponse, ModelEvaluationLogResponse, ModelEvaluationRecordResponse, ModelEvaluationRequest, ModelTestRecordResponse, ModelVersionList, ModelVersionResponse, ModelVersionUpdate, PreAnnotationRequest, PreAnnotationResponse
+from app.models.evaluation import YoloEvaluationRunner
 from app.models.service import ModelService
 
 
@@ -101,8 +104,11 @@ async def test_model(
     iou: float = Query(default=0.45, ge=0, le=1),
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
+    settings: Settings = Depends(get_settings),
 ) -> InferenceResult:
-    image_bytes = await file.read()
+    image_bytes = await file.read(settings.max_upload_bytes + 1)
+    if len(image_bytes) > settings.max_upload_bytes:
+        raise ValidationError("upload_too_large", f"Upload exceeds the {settings.max_upload_bytes // (1024 * 1024)} MB limit.")
     service = ModelService(storage)
     result = service.run_test_inference(session, model_id, image_bytes, confidence, iou)
     service.save_test_record(session, model_id, file.filename or "test.jpg", image_bytes, result)
@@ -115,13 +121,38 @@ def list_model_tests(model_id: str, session: Session = Depends(get_session), sto
 
 
 @router.post("/{model_id}/evaluate", response_model=ModelEvaluationRecordResponse, status_code=201)
-def evaluate_model(model_id: str, payload: ModelEvaluationRequest, session: Session = Depends(get_session), storage: Storage = Depends(get_storage)) -> ModelEvaluationRecordResponse:
-    return ModelEvaluationRecordResponse.model_validate(ModelService(storage).evaluate(session, model_id, payload.split, payload.confidence, payload.iou))
+def evaluate_model(model_id: str, payload: ModelEvaluationRequest, session: Session = Depends(get_session), storage: Storage = Depends(get_storage), runner: YoloEvaluationRunner = Depends(get_evaluation_runner)) -> ModelEvaluationRecordResponse:
+    record = ModelService(storage).create_evaluation(session, model_id, payload.split, payload.confidence, payload.iou)
+    runner.start_task(record.id)
+    return ModelEvaluationRecordResponse.model_validate(record)
 
 
 @router.get("/{model_id}/evaluations", response_model=list[ModelEvaluationRecordResponse])
 def list_model_evaluations(model_id: str, session: Session = Depends(get_session), storage: Storage = Depends(get_storage)) -> list[ModelEvaluationRecordResponse]:
     return [ModelEvaluationRecordResponse.model_validate(item) for item in ModelService(storage).list_evaluations(session, model_id)]
+
+
+@router.get("/{model_id}/evaluations/{evaluation_id}/logs", response_model=ModelEvaluationLogResponse)
+def get_model_evaluation_logs(
+    model_id: str,
+    evaluation_id: str,
+    tail: int | None = Query(default=None, ge=1, le=10000),
+    session: Session = Depends(get_session),
+    storage: Storage = Depends(get_storage),
+) -> ModelEvaluationLogResponse:
+    return ModelService(storage).evaluation_logs(session, model_id, evaluation_id, tail)
+
+
+@router.get("/{model_id}/evaluations/{evaluation_id}/artifacts/{artifact}")
+def get_model_evaluation_artifact(
+    model_id: str,
+    evaluation_id: str,
+    artifact: str,
+    session: Session = Depends(get_session),
+    storage: Storage = Depends(get_storage),
+) -> FileResponse:
+    path = ModelService(storage).evaluation_artifact_path(session, model_id, evaluation_id, artifact)
+    return FileResponse(path)
 
 
 @router.post("/{model_id}/preannotate", response_model=PreAnnotationResponse)

@@ -104,7 +104,7 @@ export const api = {
   createTrainingTask: (payload: { dataset_id: string; name: string; model: string; task_type: TaskType; epochs: number; img_size: number; batch_size: number; device: string; workers: number; seed: number }) =>
     request<TrainingTask>("/api/training/tasks", json(payload)),
   stopTrainingTask: (taskId: string) => request<TrainingTask>(`/api/training/tasks/${taskId}/stop`, { method: "POST" }),
-  resumeTrainingTask: (taskId: string, data: { name?: string; epochs?: number } = {}) => request<TrainingTask>(`/api/training/tasks/${taskId}/resume`, json(data)),
+  resumeTrainingTask: (taskId: string, data: { name?: string; epochs?: number; resume_epoch?: boolean } = {}) => request<TrainingTask>(`/api/training/tasks/${taskId}/resume`, json(data)),
   getTrainingLogs: (taskId: string, tail = 200) => request<TrainingLog>(`/api/training/tasks/${taskId}/logs?tail=${tail}`),
   getTrainingSummary: (taskId: string) => request<import("../types").TrainingSummary>(`/api/training/tasks/${taskId}/summary`),
   downloadCheckpointUrl: (taskId: string, checkpoint: "best" | "last") => apiUrl(`/api/training/tasks/${taskId}/checkpoints/${checkpoint}`),
@@ -119,6 +119,8 @@ export const api = {
   listModelTests: (modelId: string) => request<ModelTestRecord[]>(`/api/models/${modelId}/tests`),
   evaluateModel: (modelId: string, split: SplitName = "val") => request<ModelEvaluationRecord>(`/api/models/${modelId}/evaluate`, json({ split })),
   listModelEvaluations: (modelId: string) => request<ModelEvaluationRecord[]>(`/api/models/${modelId}/evaluations`),
+  modelEvaluationLogs: (modelId: string, evaluationId: string, tail = 500) => request<{ evaluation_id: string; logs: string; line_count: number }>(`/api/models/${modelId}/evaluations/${evaluationId}/logs?tail=${tail}`),
+  modelEvaluationArtifactUrl: (modelId: string, evaluationId: string, artifact: "confusion_matrix" | "pr_curve" | "box_pr_curve" | "mask_pr_curve" | "predictions") => apiUrl(`/api/models/${modelId}/evaluations/${evaluationId}/artifacts/${artifact}`),
   compareModels: (baselineModelId: string, candidateModelId: string) => request<ModelComparison>("/api/models/compare", json({ baseline_model_id: baselineModelId, candidate_model_id: candidateModelId })),
   preannotate: (modelId: string, datasetId: string, imageIds: string[]) => request<{ model_id: string; dataset_id: string; images: Array<{ image_id: string; annotations: unknown[] }> }>(`/api/models/${modelId}/preannotate`, json({ dataset_id: datasetId, image_ids: imageIds })),
   downloadModelUrl: (modelId: string) => apiUrl(`/api/models/${modelId}/download`),

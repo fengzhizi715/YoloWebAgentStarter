@@ -114,6 +114,8 @@ def test_coco_round_trip_and_derived_tiling_dataset(client):
     with zipfile.ZipFile(io.BytesIO(coco.content)) as archive:
         manifest = __import__("json").loads(archive.read("annotations.json"))
         assert manifest["images"][0]["split"] == "val"
+        assert manifest["images"][0]["file_name"] in archive.namelist()
+        assert manifest["images"][0]["starter_original_file_name"] == "large.png"
         assert manifest["annotations"][0]["bbox"] == [10.0, 12.0, 30.0, 25.0]
     imported = client.post(
         "/api/datasets/import/coco",
@@ -122,6 +124,8 @@ def test_coco_round_trip_and_derived_tiling_dataset(client):
     )
     assert imported.status_code == 201, imported.text
     assert imported.json()["imported_annotations"] == 1
+    imported_image = client.get(f"/api/datasets/{imported.json()['dataset']['id']}/images").json()["items"][0]
+    assert imported_image["file_name"] == "large.png"
 
     tiled = client.post(
         f"/api/datasets/{dataset_id}/tile",
@@ -132,6 +136,43 @@ def test_coco_round_trip_and_derived_tiling_dataset(client):
     detail = client.get(f"/api/datasets/{tiled.json()['dataset_id']}")
     assert detail.status_code == 200
     assert detail.json()["task_type"] == "detect"
+
+
+def test_coco_segment_import_rejects_bbox_only_annotations(client):
+    archive_payload = io.BytesIO()
+    with zipfile.ZipFile(archive_payload, "w") as archive:
+        archive.writestr("annotations.json", __import__("json").dumps({
+            "categories": [{"id": 1, "name": "shape"}],
+            "images": [{"id": 1, "file_name": "images/shape.png", "width": 100, "height": 80}],
+            "annotations": [{"id": 1, "image_id": 1, "category_id": 1, "bbox": [10, 10, 20, 20], "segmentation": []}],
+        }))
+        archive.writestr("images/shape.png", png_bytes())
+    response = client.post(
+        "/api/datasets/import/coco",
+        data={"name": "invalid-segment-coco", "task_type": "segment"},
+        files={"file": ("segment.zip", archive_payload.getvalue(), "application/zip")},
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "coco_segment_missing_polygon"
+
+
+def test_failed_coco_import_rolls_back_dataset_and_classes(client):
+    archive_payload = io.BytesIO()
+    with zipfile.ZipFile(archive_payload, "w") as archive:
+        archive.writestr("annotations.json", __import__("json").dumps({
+            "categories": [{"id": 1, "name": "shape"}],
+            "images": [{"id": 1, "file_name": "images/missing.png", "width": 100, "height": 80}],
+            "annotations": [],
+        }))
+    before = client.get("/api/datasets").json()
+    response = client.post(
+        "/api/datasets/import/coco",
+        data={"name": "must-rollback", "task_type": "detect"},
+        files={"file": ("broken.zip", archive_payload.getvalue(), "application/zip")},
+    )
+    assert response.status_code == 422
+    after = client.get("/api/datasets").json()
+    assert [item["id"] for item in after] == [item["id"] for item in before]
 
 
 def test_segment_annotations_require_polygon_and_reject_out_of_bounds(client):

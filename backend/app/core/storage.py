@@ -29,6 +29,7 @@ class Storage:
         self.datasets_dir = self.data_dir / "datasets"
         self.exports_dir = self.data_dir / "exports"
         self.training_dir = self.data_dir / "runs" / "training"
+        self.evaluation_dir = self.data_dir / "runs" / "evaluation"
         self.models_dir = self.data_dir / "models"
         self.tmp_dir = self.data_dir / "tmp"
 
@@ -150,6 +151,30 @@ class Storage:
         candidate.mkdir(parents=True, exist_ok=True)
         return candidate
 
+    def managed_training_path(self, path: str | Path) -> Path:
+        candidate = Path(path).expanduser().resolve()
+        if not _is_within(candidate, self.training_dir.resolve()):
+            raise ValidationError("unsafe_path", "Training path must stay inside the managed training directory.")
+        return candidate
+
+    def evaluation_task_dir(self, evaluation_id: str) -> Path:
+        candidate = (self.evaluation_dir / evaluation_id).resolve()
+        if not _is_within(candidate, self.evaluation_dir.resolve()):
+            raise ValidationError("unsafe_path", "Evaluation task path escapes the managed evaluation directory.")
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+
+    def managed_evaluation_path(self, path: str | Path) -> Path:
+        candidate = Path(path).expanduser().resolve()
+        if not _is_within(candidate, self.evaluation_dir.resolve()):
+            raise ValidationError("unsafe_path", "Evaluation path must stay inside the managed evaluation directory.")
+        return candidate
+
+    def remove_evaluation_task(self, evaluation_id: str) -> None:
+        directory = (self.evaluation_dir / evaluation_id).resolve()
+        if _is_within(directory, self.evaluation_dir.resolve()) and directory.exists():
+            shutil.rmtree(directory)
+
     def model_version_dir(self, model_id: str) -> Path:
         candidate = (self.models_dir / model_id).resolve()
         if not _is_within(candidate, self.models_dir.resolve()):
@@ -198,16 +223,3 @@ class Storage:
         directory = self.training_task_dir(task_id)
         if directory.exists():
             shutil.rmtree(directory)
-
-    def copy_training_checkpoint(self, source: str | Path, task_id: str) -> Path:
-        """Stage a previous managed `last.pt` into a new task's private run area."""
-
-        source_path = Path(source).expanduser().resolve()
-        if not _is_within(source_path, self.training_dir.resolve()) or not source_path.is_file():
-            raise ValidationError("resume_checkpoint_invalid", "The resume checkpoint is not a managed training artifact.")
-        destination = (self.training_task_dir(task_id) / "resume" / "last.pt").resolve()
-        if not _is_within(destination, self.training_task_dir(task_id).resolve()):
-            raise ValidationError("unsafe_path", "Resume checkpoint path escapes managed training storage.")
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, destination)
-        return destination

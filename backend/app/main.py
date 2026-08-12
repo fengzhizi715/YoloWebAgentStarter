@@ -12,6 +12,7 @@ from app.core.database import Database
 from app.core.migrations import upgrade_database
 from app.core.storage import Storage
 from app.training.runtime.queue import training_queue
+from app.models.evaluation import YoloEvaluationRunner
 
 
 def create_app(settings: Settings | None = None, *, run_migrations: bool = True) -> FastAPI:
@@ -25,6 +26,7 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
         if run_migrations:
             upgrade_database(resolved.project_root / "backend", resolved.database_url)
         training_queue.configure(database.session_factory, storage)
+        YoloEvaluationRunner(database.session_factory, storage).recover_orphaned()
         training_queue.recover_orphaned()
         yield
         database.dispose()

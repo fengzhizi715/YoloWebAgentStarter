@@ -25,7 +25,7 @@
 | SAM | segment 的框选/点选建议；未配置模型时仅提供明确标识的 review-only 框形建议 |
 | 数据交换 | YOLO detect / segment / OBB ZIP 导入与导出；YOLO classify 目录布局导入与导出；detect/segment COCO ZIP 导入与导出 |
 | 训练 | 本地 FIFO 队列、日志、进度、停止控制、从受管 last.pt 续跑、指标摘要/趋势、配置快照和 best/last checkpoint |
-| 模型 | 训练产物的受管 PT 下载、持久化图片快速测试、同数据集模型比较、可审阅预标注、本地 split 评估/错误样本、去重 FP32 ONNX 导出 |
+| 模型 | 训练产物的受管 PT 下载、持久化图片快速测试、同数据集模型比较、可审阅预标注、四任务本地 YOLO val 评估/错误样本、去重 FP32 ONNX 导出 |
 | 数据质量 | 标注覆盖率、类别分布、小目标、重叠 bbox 和类别失衡提示 |
 | 安全边界 | 受管存储根目录、导入目录边界、ZIP 防资源耗尽限制、默认 localhost 绑定 |
 
@@ -140,7 +140,7 @@ npm --prefix frontend run build
 PYTHONPATH=backend .venv/bin/python scripts/run_cpu_smoke.py
 ```
 
-CPU 冒烟会实际运行 detect、segment、OBB、classify 的一轮微型训练，并校验 detect ONNX 导出。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [CHANGELOG.md](CHANGELOG.md)。
+CPU 冒烟会实际运行 detect、segment、OBB、classify 的一轮微型训练，复用上游原生参数执行 segment `val(save_json=True, plots=True)`，并校验 box/mask 指标、评估产物和 detect ONNX 导出。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 参与贡献
 

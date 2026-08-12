@@ -86,14 +86,30 @@ class ModelEvaluationRequest(BaseModel):
 
 
 class ModelEvaluationRecordResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     model_id: str
     dataset_id: str
     split: Literal["train", "val", "test"]
+    status: Literal["pending", "running", "completed", "failed"]
     confidence: float
     iou: float
     result_json: dict
+    error_message: str | None
+    export_path: str | None
+    data_path: str | None
+    run_dir: str | None
+    logs_path: str | None
     created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class ModelEvaluationLogResponse(BaseModel):
+    evaluation_id: str
+    logs: str
+    line_count: int
 
 
 class PreAnnotationRequest(BaseModel):

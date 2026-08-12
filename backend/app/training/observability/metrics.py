@@ -60,3 +60,25 @@ class TrainingMetricsParser:
             if point:
                 history.append(point)
         return history
+
+    def parse_validation_text(self, text: str, task_type: str) -> dict[str, float]:
+        """Community extension of the upstream metrics parser for standalone val."""
+
+        clean = re.sub(r"\x1b\[[0-9;]*m", "", text)
+        number = r"(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
+        if task_type == "classify":
+            matches = list(re.finditer(rf"^\s*all\s+({number})\s+({number})\s*$", clean, re.MULTILINE))
+            if not matches:
+                return {}
+            top1, top5 = (float(value) for value in matches[-1].groups())
+            return {"top1": top1, "top5": top5}
+        metric_count = 8 if task_type == "segment" else 4
+        values = r"\s+".join([rf"({number})"] * metric_count)
+        matches = list(re.finditer(rf"^\s*all\s+\d+\s+\d+\s+{values}\s*$", clean, re.MULTILINE))
+        if not matches:
+            return {}
+        parsed = [float(value) for value in matches[-1].groups()]
+        metrics = dict(zip(("precision", "recall", "map50", "map50_95"), parsed[:4], strict=True))
+        if task_type == "segment":
+            metrics.update(dict(zip(("mask_precision", "mask_recall", "mask_map50", "mask_map50_95"), parsed[4:], strict=True)))
+        return metrics

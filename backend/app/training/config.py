@@ -104,5 +104,9 @@ def build_training_command(
     if patience is not None:
         args.append(f"patience={patience}")
     if resume:
+        # The selected managed checkpoint is already the model reference. This
+        # matches upstream: loading that model and passing resume=True makes
+        # Ultralytics restore its epoch/optimizer state without searching for a
+        # different latest run.
         args.append("resume=True")
     return TrainingCommand(args=args, readable=shlex.join(args))
