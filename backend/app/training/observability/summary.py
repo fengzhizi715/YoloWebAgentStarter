@@ -14,8 +14,12 @@ def write_training_summary(task: TrainingTask, dataset: Dataset) -> dict:
     log_store = TrainingLogStore(task.logs_path or "train.log")
     text = log_store.read()
     metrics = dict(task.metrics_json or {})
+    history: list[dict[str, float]] = []
     if task.run_dir:
-        metrics.update(TrainingMetricsParser().parse_results(Path(task.run_dir) / "results.csv"))
+        parser = TrainingMetricsParser()
+        results_path = Path(task.run_dir) / "results.csv"
+        metrics.update(parser.parse_results(results_path))
+        history = parser.parse_history(results_path)
     risks: list[str] = []
     if task.status != "completed":
         risks.append(f"training_status_{task.status}")
@@ -31,7 +35,7 @@ def write_training_summary(task: TrainingTask, dataset: Dataset) -> dict:
         "training_config": task.config_json or {},
         "dataset": {"id": dataset.id, "name": dataset.name, "task_type": dataset.task_type},
         "progress": {"epoch": task.progress_epoch, "total_epochs": task.progress_total_epochs, "percent": task.progress_percent},
-        "metrics": metrics,
+        "metrics": {**metrics, "history": history},
         "checkpoints": checkpoint_data,
         "log_summary": {"line_count": len(text.splitlines()), "tail": text.splitlines()[-20:]},
         "risks": risks,

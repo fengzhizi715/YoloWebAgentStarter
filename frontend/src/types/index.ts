@@ -111,6 +111,26 @@ export interface ValidationReport {
   issues: ValidationIssue[];
 }
 
+export interface QualityIssue {
+  level: "error" | "warning" | "info";
+  type: string;
+  message: string;
+  image_id: string | null;
+  annotation_ids: string[];
+  class_id: string | null;
+  iou: number | null;
+  value: number | null;
+}
+
+export interface DatasetQualityReport {
+  dataset_id: string;
+  task_type: TaskType;
+  summary: { image_count: number; annotated_image_count: number; unannotated_image_count: number; coverage: number; annotation_count: number; bbox_count: number; polygon_count: number; obb_count: number; classify_count: number; small_object_count: number; small_object_ratio: number };
+  class_distribution: Array<{ class_id: string; class_index: number; name: string; count: number; ratio: number }>;
+  issues: QualityIssue[];
+}
+export interface DuplicateReport { images: number; duplicate: number; similar: number; invalid_images: number; invalid_image_ids: string[]; phash_distance: number; groups: Array<{ canonical_image_id: string; image_ids: string[]; kind: "exact" | "similar"; score: number; hamming_distance?: number }>; }
+
 export interface ImagePage {
   items: ImageItem[];
   total: number;
@@ -163,6 +183,19 @@ export interface TrainingLog {
   line_count: number;
 }
 
+export interface TrainingSummary {
+  task_id: string;
+  status: TrainingStatus;
+  training_config: Record<string, unknown>;
+  dataset: Record<string, unknown>;
+  progress: { epoch: number; total_epochs: number; percent: number };
+  metrics: Record<string, unknown> & { history?: Array<Record<string, number>> };
+  checkpoints: Record<string, string | null>;
+  log_summary: { line_count: number; tail: string[] };
+  risks: string[];
+  next_steps: string[];
+}
+
 export type ModelStatus = "active" | "archived";
 export type ModelFormat = "pt" | "onnx";
 export type ModelArtifactType = "best" | "last" | "onnx";
@@ -192,3 +225,9 @@ export interface ModelVersion {
   created_at: string;
   updated_at: string;
 }
+
+export interface InferenceDetection { class_index: number; class_name: string; confidence: number; x: number; y: number; width: number; height: number; polygon: number[][] | null; obb_points: number[][] | null; }
+export interface InferenceResult { model_id: string; task_type: TaskType; detections: InferenceDetection[]; inference_time_ms: number; }
+export interface ModelComparison { dataset_id: string; baseline: { id: string; name: string; metrics: Record<string, number> }; candidate: { id: string; name: string; metrics: Record<string, number> }; deltas: Record<string, number | null>; suggestions: string[]; }
+export interface ModelTestRecord { id: string; model_id: string; file_name: string; result_json: InferenceResult; created_at: string; }
+export interface ModelEvaluationRecord { id: string; model_id: string; dataset_id: string; split: SplitName; confidence: number; iou: number; result_json: { images_evaluated: number; split: SplitName; metrics: { true_positive: number; false_positive: number; false_negative: number; precision: number; recall: number; f1: number }; error_samples: Array<{ image_id: string; image_file: string; type: string; message: string }>; error_sample_count: number }; created_at: string; }

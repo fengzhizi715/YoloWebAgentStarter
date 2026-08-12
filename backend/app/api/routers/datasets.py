@@ -13,35 +13,50 @@ from app.core.ids import new_id
 from app.core.models import ClassLabel, Dataset, ImageItem
 from app.core.schemas import (
     AnnotationResponse,
+    AutoSplitRequest,
+    BulkImageSplitUpdate,
     ClassLabelCreate,
     ClassLabelResponse,
     DatasetCreate,
     DatasetDetailResponse,
     DatasetResponse,
     DatasetUpdate,
+    DuplicateReport,
     ImageItemResponse,
     ImagePage,
     ImageSplitUpdate,
     ReplaceAnnotationsRequest,
     ScanImagesRequest,
     ScanImagesResponse,
+    SplitOperationResponse,
+    TileDatasetRequest,
+    TileDatasetResponse,
     SplitName,
     UploadImagesResponse,
     ValidationReport,
+    VideoImportResponse,
     YoloImportResponse,
 )
 from app.core.storage import Storage
 from app.core.task_types import TaskType
 from app.dataset.annotation.service import list_annotations, replace_annotations
 from app.dataset.exchange.yolo import YoloArchiveLimits, export_dataset, import_dataset
+from app.dataset.exchange.coco import export_coco, import_coco
+from app.dataset.quality.schemas import DatasetQualityReport
+from app.dataset.quality.service import DatasetQualityService
 from app.dataset.images import (
     add_uploaded_images,
+    auto_split_images,
     delete_image,
     get_image,
     list_images,
     scan_images,
     update_image_split,
+    update_image_splits,
 )
+from app.dataset.preparation.duplicates import DuplicateDetector
+from app.dataset.preparation.tiling import DatasetTiler
+from app.dataset.video import import_video_frames
 from app.dataset.service import (
     create_class,
     create_dataset,
@@ -123,6 +138,31 @@ async def import_yolo_archive(
     )
 
 
+@router.post("/import/coco", response_model=YoloImportResponse, status_code=201)
+async def import_coco_archive(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    task_type: TaskType = Form(...),
+    description: str | None = Form(default=None),
+    session: Session = Depends(get_session),
+    storage: Storage = Depends(get_storage),
+    settings: Settings = Depends(get_settings),
+) -> YoloImportResponse:
+    dataset, images, annotations = import_coco(
+        session,
+        storage,
+        await _read_upload(file, settings.max_upload_bytes),
+        DatasetCreate(name=name, description=description, task_type=task_type),
+        limits=YoloArchiveLimits(
+            max_members=settings.max_yolo_archive_members,
+            max_member_bytes=settings.max_yolo_archive_member_bytes,
+            max_total_uncompressed_bytes=settings.max_yolo_archive_uncompressed_bytes,
+            max_compression_ratio=settings.max_yolo_archive_compression_ratio,
+        ),
+    )
+    return YoloImportResponse(dataset=_dataset_response(dataset), imported_images=images, imported_annotations=annotations)
+
+
 @router.get("", response_model=list[DatasetResponse])
 def get_datasets(session: Session = Depends(get_session)) -> list[DatasetResponse]:
     return [_dataset_response(item) for item in list_datasets(session)]
@@ -201,6 +241,22 @@ async def upload_images(
     return UploadImagesResponse(imported=len(items), items=[_image_response(item) for item in items])
 
 
+@router.post("/{dataset_id}/video/import", response_model=VideoImportResponse)
+async def import_video(
+    dataset_id: str,
+    file: UploadFile = File(...),
+    split: SplitName = Form(default="train"),
+    frame_interval: int = Form(default=30),
+    session: Session = Depends(get_session),
+    storage: Storage = Depends(get_storage),
+    settings: Settings = Depends(get_settings),
+) -> VideoImportResponse:
+    suffix = Path(file.filename or "video.mp4").suffix.lower()
+    if suffix not in {".mp4", ".mov", ".avi"}:
+        raise ValidationError("video_format_unsupported", "Supported video formats are mp4, mov and avi.")
+    return import_video_frames(session, storage, dataset_id, await _read_upload(file, settings.max_upload_bytes), suffix, split, frame_interval)
+
+
 @router.post("/{dataset_id}/images/scan", response_model=ScanImagesResponse)
 def scan_dataset_images(
     dataset_id: str,
@@ -222,6 +278,16 @@ def patch_image(
     if image.dataset_id != dataset_id:
         raise NotFoundError("image_not_found", "Image was not found in this dataset.")
     return _image_response(update_image_split(session, image_id, payload.split))
+
+
+@router.post("/{dataset_id}/images/bulk-split", response_model=SplitOperationResponse)
+def bulk_update_image_split(dataset_id: str, payload: BulkImageSplitUpdate, session: Session = Depends(get_session)) -> SplitOperationResponse:
+    return update_image_splits(session, dataset_id, payload)
+
+
+@router.post("/{dataset_id}/images/auto-split", response_model=SplitOperationResponse)
+def auto_split_dataset_images(dataset_id: str, payload: AutoSplitRequest, session: Session = Depends(get_session)) -> SplitOperationResponse:
+    return auto_split_images(session, dataset_id, payload)
 
 
 @router.delete("/{dataset_id}/images/{image_id}", status_code=204, response_class=Response, response_model=None)
@@ -267,6 +333,31 @@ def validate_dataset_route(
     return validate_dataset(session, storage, dataset_id)
 
 
+@router.get("/{dataset_id}/quality/report", response_model=DatasetQualityReport)
+def get_dataset_quality_report(dataset_id: str, session: Session = Depends(get_session)) -> DatasetQualityReport:
+    return DatasetQualityService().report(session, dataset_id)
+
+
+@router.get("/{dataset_id}/duplicates", response_model=DuplicateReport)
+def get_duplicate_report(
+    dataset_id: str,
+    phash_distance: int = Query(default=8, ge=0, le=64),
+    session: Session = Depends(get_session),
+    storage: Storage = Depends(get_storage),
+) -> DuplicateReport:
+    return DuplicateReport.model_validate(DuplicateDetector().analyze(list_images(session, dataset_id), storage, phash_distance))
+
+
+@router.post("/{dataset_id}/tile", response_model=TileDatasetResponse, status_code=201)
+def tile_dataset(
+    dataset_id: str,
+    payload: TileDatasetRequest,
+    session: Session = Depends(get_session),
+    storage: Storage = Depends(get_storage),
+) -> TileDatasetResponse:
+    return DatasetTiler().create(session, storage, dataset_id, payload)
+
+
 @router.get("/{dataset_id}/export/yolo")
 def export_yolo_archive(
     dataset_id: str,
@@ -275,6 +366,14 @@ def export_yolo_archive(
 ) -> FileResponse:
     content, file_name = export_dataset(session, storage, dataset_id)
     output_path = storage.export_path(f"{new_id('yolo')}_{Path(file_name).name}")
+    output_path.write_bytes(content)
+    return FileResponse(output_path, media_type="application/zip", filename=file_name)
+
+
+@router.get("/{dataset_id}/export/coco")
+def export_coco_archive(dataset_id: str, session: Session = Depends(get_session), storage: Storage = Depends(get_storage)) -> FileResponse:
+    content, file_name = export_coco(session, storage, dataset_id)
+    output_path = storage.export_path(f"{new_id('coco')}_{Path(file_name).name}")
     output_path.write_bytes(content)
     return FileResponse(output_path, media_type="application/zip", filename=file_name)
 

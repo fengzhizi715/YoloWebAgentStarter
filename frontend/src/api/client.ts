@@ -2,6 +2,8 @@ import type {
   Annotation,
   ClassLabel,
   Dataset,
+  DatasetQualityReport,
+  DuplicateReport,
   ImageItem,
   ImagePage,
   SplitName,
@@ -9,6 +11,10 @@ import type {
   TrainingLog,
   TrainingTask,
   ModelVersion,
+  InferenceResult,
+  ModelComparison,
+  ModelEvaluationRecord,
+  ModelTestRecord,
   SamPrediction,
   SystemInfo,
   ValidationReport,
@@ -62,6 +68,8 @@ export const api = {
   },
   updateImageSplit: (datasetId: string, imageId: string, split: SplitName) =>
     request<ImageItem>(`/api/datasets/${datasetId}/images/${imageId}`, json({ split }, "PATCH")),
+  updateImageSplits: (datasetId: string, imageIds: string[], split: SplitName) => request<{ updated: number; split_counts: Record<SplitName, number> }>(`/api/datasets/${datasetId}/images/bulk-split`, json({ image_ids: imageIds, split })),
+  autoSplitImages: (datasetId: string, data: { train_ratio: number; val_ratio: number; test_ratio: number; seed: number }) => request<{ updated: number; split_counts: Record<SplitName, number> }>(`/api/datasets/${datasetId}/images/auto-split`, json(data)),
   scanImages: (datasetId: string, path: string, split: SplitName) =>
     request<{ total_found: number; imported: number; skipped: number; invalid: number }>(`/api/datasets/${datasetId}/images/scan`, json({ path, recursive: true, split })),
   getAnnotations: (datasetId: string, imageId: string) =>
@@ -75,6 +83,9 @@ export const api = {
   samPredict: (payload: { image_id: string; class_id: string; prompt_type: "box" | "point"; box?: { x: number; y: number; width: number; height: number }; points?: { x: number; y: number; label?: 0 | 1 }[] }) =>
     request<SamPrediction>("/api/sam/predict", json(payload)),
   validateDataset: (datasetId: string) => request<ValidationReport>(`/api/datasets/${datasetId}/validate`, { method: "POST" }),
+  qualityReport: (datasetId: string) => request<DatasetQualityReport>(`/api/datasets/${datasetId}/quality/report`),
+  duplicateReport: (datasetId: string) => request<DuplicateReport>(`/api/datasets/${datasetId}/duplicates`),
+  importVideo: async (datasetId: string, file: File, split: SplitName, frameInterval: number) => { const form = new FormData(); form.append("file", file); form.append("split", split); form.append("frame_interval", String(frameInterval)); return request<{ imported: number; source_fps: number; frame_count: number }>(`/api/datasets/${datasetId}/video/import`, { method: "POST", body: form }); },
   importYolo: async (file: File, name: string, taskType: TaskType) => {
     const form = new FormData();
     form.append("file", file);
@@ -86,11 +97,16 @@ export const api = {
     });
   },
   exportYoloUrl: (datasetId: string) => apiUrl(`/api/datasets/${datasetId}/export/yolo`),
+  exportCocoUrl: (datasetId: string) => apiUrl(`/api/datasets/${datasetId}/export/coco`),
+  importCoco: async (file: File, name: string, taskType: TaskType) => { const form = new FormData(); form.append("file", file); form.append("name", name); form.append("task_type", taskType); return request<{ dataset: Dataset; imported_images: number; imported_annotations: number }>("/api/datasets/import/coco", { method: "POST", body: form }); },
+  tileDataset: (datasetId: string, data: { name: string; description?: string; tile_size: number; overlap: number; keep_empty_tiles: boolean }) => request<{ dataset_id: string; source_dataset_id: string; generated_images: number; generated_annotations: number; skipped_empty_tiles: number }>(`/api/datasets/${datasetId}/tile`, json(data)),
   listTrainingTasks: (datasetId: string) => request<{ items: TrainingTask[] }>(`/api/training/tasks?dataset_id=${datasetId}`),
   createTrainingTask: (payload: { dataset_id: string; name: string; model: string; task_type: TaskType; epochs: number; img_size: number; batch_size: number; device: string; workers: number; seed: number }) =>
     request<TrainingTask>("/api/training/tasks", json(payload)),
   stopTrainingTask: (taskId: string) => request<TrainingTask>(`/api/training/tasks/${taskId}/stop`, { method: "POST" }),
+  resumeTrainingTask: (taskId: string, data: { name?: string; epochs?: number } = {}) => request<TrainingTask>(`/api/training/tasks/${taskId}/resume`, json(data)),
   getTrainingLogs: (taskId: string, tail = 200) => request<TrainingLog>(`/api/training/tasks/${taskId}/logs?tail=${tail}`),
+  getTrainingSummary: (taskId: string) => request<import("../types").TrainingSummary>(`/api/training/tasks/${taskId}/summary`),
   downloadCheckpointUrl: (taskId: string, checkpoint: "best" | "last") => apiUrl(`/api/training/tasks/${taskId}/checkpoints/${checkpoint}`),
   listModels: (datasetId: string, includeArchived = true) => request<{ items: ModelVersion[]; total: number }>(`/api/models?dataset_id=${datasetId}&include_archived=${includeArchived}`),
   getModel: (modelId: string) => request<ModelVersion>(`/api/models/${modelId}`),
@@ -99,5 +115,11 @@ export const api = {
   restoreModel: (modelId: string) => request<ModelVersion>(`/api/models/${modelId}/restore`, { method: "POST" }),
   deleteModel: (modelId: string) => request<void>(`/api/models/${modelId}`, { method: "DELETE" }),
   exportModelOnnx: (modelId: string) => request<ModelVersion>(`/api/models/${modelId}/export-onnx`, { method: "POST" }),
+  testModel: async (modelId: string, file: File, confidence: number, iou: number) => { const form = new FormData(); form.append("file", file); return request<InferenceResult>(`/api/models/${modelId}/test?confidence=${confidence}&iou=${iou}`, { method: "POST", body: form }); },
+  listModelTests: (modelId: string) => request<ModelTestRecord[]>(`/api/models/${modelId}/tests`),
+  evaluateModel: (modelId: string, split: SplitName = "val") => request<ModelEvaluationRecord>(`/api/models/${modelId}/evaluate`, json({ split })),
+  listModelEvaluations: (modelId: string) => request<ModelEvaluationRecord[]>(`/api/models/${modelId}/evaluations`),
+  compareModels: (baselineModelId: string, candidateModelId: string) => request<ModelComparison>("/api/models/compare", json({ baseline_model_id: baselineModelId, candidate_model_id: candidateModelId })),
+  preannotate: (modelId: string, datasetId: string, imageIds: string[]) => request<{ model_id: string; dataset_id: string; images: Array<{ image_id: string; annotations: unknown[] }> }>(`/api/models/${modelId}/preannotate`, json({ dataset_id: datasetId, image_ids: imageIds })),
   downloadModelUrl: (modelId: string) => apiUrl(`/api/models/${modelId}/download`),
 };

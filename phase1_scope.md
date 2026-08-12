@@ -20,16 +20,16 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | pose | excluded | 当前 Enterprise 闭环尚未完全收口 |
 | 数据交换 | YOLO import / export | 公开、直观、与训练链路直接相关 |
 | native archive | excluded | 不作为首版数据库迁移或项目交换格式 |
-| COCO export | excluded | 不属于首版核心链路 |
+| COCO exchange | detect / segment ZIP 导入与导出 | 只支持标准 bbox / polygon 表示 |
 | 基础校验 | included | 训练前必须验证标注、类别和坐标合法性 |
-| 基础质量报告 | excluded | 保留 validation，排除诊断型 quality report |
-| 高级数据准备 | excluded | 视频抽帧、tiling、去重、相似图和派生数据集均不纳入 |
+| 基础质量报告 | included | 覆盖率、类别分布、小目标、重叠 bbox 和类别失衡；不生成派生数据集 |
+| 高级数据准备 | bounded | 视频抽帧、只读重复/相似图、detect/segment 派生切片；无后台工作流和批量清理 |
 | 训练方式 | 本地 Ultralytics | 不提供云训练和分布式调度 |
 | 训练设备 | CPU 必测；CUDA / MPS best-effort | CI 以 CPU 为基线，硬件能力按本机可用性启用 |
 | 模型来源 | Starter 训练产物 | 首版不提供任意外部 PT 导入中心 |
 | PT 能力 | best.pt / last.pt 管理与下载 | PT 不需要格式转换 |
 | ONNX | FP32 导出 | 排除 FP16、INT8、TensorRT、OpenVINO |
-| 模型快速测试 | excluded | 不进入首版模型管理范围 |
+| 模型快速测试 | included | 受管 PT 对临时上传图片本机推理，结果不自动写回数据集 |
 | 用户与权限 | 无登录、本地单用户 | Starter 不迁移 Auth / RBAC / License |
 | 默认网络边界 | `127.0.0.1` | 无认证模式不得默认暴露公网 |
 | 首发平台 | macOS、Linux | Windows 暂不承诺正式支持 |
@@ -43,7 +43,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 |------|------------|------------|----------|
 | 创建、查看、修改、删除数据集 | included | included | 本地 SQLite 和文件目录一致 |
 | 图片目录扫描导入 | included | included | 识别支持格式并记录尺寸 |
-| 视频导入与抽帧 | excluded | included | Starter 无入口和依赖 |
+| 视频导入与抽帧 | included | included | mp4 / mov / avi 本地抽帧，最多 1,000 帧 |
 | 类别创建与查看 | included | included | class_index 稳定且不越界 |
 | detect bbox 标注 | included | included | 创建、拖拽、缩放、保存 |
 | segment polygon 标注 | included | included | 绘制、编辑、保存，至少 3 点 |
@@ -51,11 +51,12 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | pose | excluded | included | 不在 Community v2 范围 |
 | SAM 交互建议 | included | included | 仅 segment 框/点提示，多边形须人工确认保存；不含批量自动标注 |
 | 基础数据集校验 | included | included | 坐标、类别、空标注、格式问题可返回 |
-| 高级质量报告 | excluded | included | Starter 不迁移 quality service |
+| 高级质量报告 | included | included | 覆盖率、类别分布、小目标、重复 bbox、重复/相似图片；不含 Agent 诊断 |
 | split 持久化 | included | included | 导出和训练复用已有 split |
 | YOLO 导入 | included | included | detect / segment / OBB 标签和 classify 目录均可导入 |
 | YOLO 导出 | included | included | 对应任务可训练数据结构正确 |
-| native / COCO 数据交换 | excluded | included | Starter 不暴露相关端点 |
+| native archive | excluded | included | Starter 不暴露 native archive 端点 |
+| COCO detect / segment 数据交换 | included | included | 可导入和导出 ZIP；不支持 OBB / classify |
 
 ### 3.2 YOLO 训练
 
@@ -68,8 +69,9 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 停止训练 | included | included | 进程和状态可收敛 |
 | pause / unpause | excluded | included | Starter 不依赖平台信号语义 |
 | checkpoint 列表 | included | included | 可查看 last / best 和可恢复 checkpoint |
-| 失败恢复 | included | included | 启动后清理失活任务并可重新发起 |
-| 自动评估 / Workflow / Agent | excluded | included | 训练完成后不触发商业闭环 |
+| 失败恢复 / checkpoint 续跑 | included | included | 从 Starter 受管 `last.pt` 创建新任务；不接受任意外部 checkpoint |
+| 独立 Evaluation | included | included | 对保存 split 同步运行本地评估并持久化错误样本；不含后台任务或 Workflow |
+| Workflow / Agent | excluded | included | 不触发商业自动化闭环 |
 | 云训练 / 分布式训练 | excluded | excluded/future | 不在 Starter 范围 |
 
 ### 3.3 模型管理与导出
@@ -82,9 +84,9 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | PT 下载 | included | included | 只访问受管模型文件 |
 | ONNX FP32 导出 | included | included | 从 PT 生成有效 `.onnx` 并可下载 |
 | 外部 PT 导入 | excluded | included | Community v2 不提供导入中心 |
-| 模型比较 | excluded | included | 无 compare API 和 UI |
-| 模型快速测试 | excluded | included | 无 test / save-test API |
-| 独立 Evaluation | excluded | included | 无评估任务和错误样本 |
+| 模型比较 | included | included | 仅限同数据集、同任务模型的基础指标对比 |
+| 模型快速测试 | included | included | 受管 PT 可上传图片测试，支持 detect / segment / OBB / classify；结果和输入图持久化到受管模型目录 |
+| 独立 Evaluation | included | included | 按已保存 split 评估并持久化 TP/FP/FN、Precision/Recall/F1 与最多 200 个错误样本 |
 | TensorRT / OpenVINO / FP16 / INT8 | excluded | included | 无部署 runtime 和量化依赖 |
 | Benchmark / 部署包 / 内网下发 | excluded | included | 无相关表、API 和页面 |
 
@@ -118,5 +120,5 @@ Community v2 必须在全新环境中完成：
 ## 5. 变更规则
 
 - Phase 2 开始后新增能力必须显式修改本矩阵，并同步调整工作量、测试和发布门槛。
-- native archive、模型快速测试和 Windows 正式支持属于后续候选，不得在迁移中隐式带入。
+- native archive 和 Windows 正式支持属于后续候选，不得在迁移中隐式带入。
 - 如果某个排除功能被核心代码直接 import，应重写依赖边界，而不是把整个商业模块复制进 Starter。

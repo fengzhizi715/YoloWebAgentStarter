@@ -8,8 +8,8 @@ import pytest
 from PIL import Image
 
 
-def png_bytes(color: str = "#4477aa") -> bytes:
-    image = Image.new("RGB", (100, 80), color)
+def png_bytes(color: str = "#4477aa", size: tuple[int, int] = (100, 80)) -> bytes:
+    image = Image.new("RGB", size, color)
     output = io.BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()
@@ -69,6 +69,69 @@ def test_detect_dataset_annotation_validation_and_yolo_round_trip(client):
     assert imported.status_code == 201, imported.text
     assert imported.json()["imported_images"] == 1
     assert imported.json()["imported_annotations"] == 1
+
+
+def test_quality_report_and_deterministic_bulk_splits(client):
+    dataset_id = create_dataset(client)
+    class_a = client.post(f"/api/datasets/{dataset_id}/classes", json={"name": "a"}).json()["id"]
+    client.post(f"/api/datasets/{dataset_id}/classes", json={"name": "b"})
+    images = []
+    for index in range(5):
+        response = client.post(f"/api/datasets/{dataset_id}/images/upload", files={"files": (f"{index}.png", png_bytes(), "image/png")})
+        images.append(response.json()["items"][0])
+    client.put(f"/api/datasets/{dataset_id}/images/{images[0]['id']}/annotations", json={"annotations": [
+        {"type": "bbox", "class_id": class_a, "bbox": {"x": 10, "y": 10, "width": 10, "height": 10}},
+        {"type": "bbox", "class_id": class_a, "bbox": {"x": 10.2, "y": 10.2, "width": 10, "height": 10}},
+    ]})
+    report = client.get(f"/api/datasets/{dataset_id}/quality/report")
+    assert report.status_code == 200
+    assert report.json()["summary"]["image_count"] == 5
+    assert report.json()["summary"]["small_object_count"] == 2
+    assert {item["type"] for item in report.json()["issues"]} >= {"small_object", "similar_bbox"}
+
+    bulk = client.post(f"/api/datasets/{dataset_id}/images/bulk-split", json={"image_ids": [images[0]["id"], images[1]["id"]], "split": "val"})
+    assert bulk.status_code == 200
+    assert bulk.json()["updated"] == 2
+    split = client.post(f"/api/datasets/{dataset_id}/images/auto-split", json={"train_ratio": 0.8, "val_ratio": 0.2, "test_ratio": 0, "seed": 42})
+    assert split.status_code == 200
+    assert split.json()["split_counts"] == {"train": 4, "val": 1, "test": 0}
+
+
+def test_coco_round_trip_and_derived_tiling_dataset(client):
+    dataset_id = create_dataset(client)
+    class_id = client.post(f"/api/datasets/{dataset_id}/classes", json={"name": "cat"}).json()["id"]
+    image = client.post(
+        f"/api/datasets/{dataset_id}/images/upload",
+        data={"split": "val"},
+        files={"files": ("large.png", png_bytes(size=(300, 200)), "image/png")},
+    ).json()["items"][0]
+    client.put(
+        f"/api/datasets/{dataset_id}/images/{image['id']}/annotations",
+        json={"annotations": [{"type": "bbox", "class_id": class_id, "bbox": {"x": 10, "y": 12, "width": 30, "height": 25}}]},
+    )
+    coco = client.get(f"/api/datasets/{dataset_id}/export/coco")
+    assert coco.status_code == 200, coco.text
+    with zipfile.ZipFile(io.BytesIO(coco.content)) as archive:
+        manifest = __import__("json").loads(archive.read("annotations.json"))
+        assert manifest["images"][0]["split"] == "val"
+        assert manifest["annotations"][0]["bbox"] == [10.0, 12.0, 30.0, 25.0]
+    imported = client.post(
+        "/api/datasets/import/coco",
+        data={"name": "coco-round-trip", "task_type": "detect"},
+        files={"file": ("coco.zip", coco.content, "application/zip")},
+    )
+    assert imported.status_code == 201, imported.text
+    assert imported.json()["imported_annotations"] == 1
+
+    tiled = client.post(
+        f"/api/datasets/{dataset_id}/tile",
+        json={"name": "tiled", "tile_size": 128, "overlap": 0, "keep_empty_tiles": False},
+    )
+    assert tiled.status_code == 201, tiled.text
+    assert tiled.json()["generated_images"] == 1
+    detail = client.get(f"/api/datasets/{tiled.json()['dataset_id']}")
+    assert detail.status_code == 200
+    assert detail.json()["task_type"] == "detect"
 
 
 def test_segment_annotations_require_polygon_and_reject_out_of_bounds(client):

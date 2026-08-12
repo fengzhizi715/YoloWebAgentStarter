@@ -117,6 +117,13 @@ class Storage:
     def write_image(self, dataset_id: str, storage_name: str, content: bytes) -> tuple[int, int]:
         return self.write_image_stream(dataset_id, storage_name, io.BytesIO(content), max_bytes=len(content))
 
+    def read_image(self, dataset_id: str, storage_name: str) -> bytes:
+        path = self.image_path(dataset_id, storage_name)
+        try:
+            return path.read_bytes()
+        except OSError as exc:
+            raise ValidationError("image_read_failed", "Could not read the managed image file.") from exc
+
     def copy_image(self, source: Path, dataset_id: str, storage_name: str) -> tuple[int, int]:
         try:
             content = source.read_bytes()
@@ -150,6 +157,22 @@ class Storage:
         candidate.mkdir(parents=True, exist_ok=True)
         return candidate
 
+    def model_test_path(self, model_id: str, record_id: str, file_name: str) -> Path:
+        directory = self.model_version_dir(model_id) / "tests"
+        directory.mkdir(parents=True, exist_ok=True)
+        candidate = (directory / f"{record_id}_{Path(file_name).name}").resolve()
+        if not _is_within(candidate, directory.resolve()):
+            raise ValidationError("unsafe_path", "Model test image path escapes managed storage.")
+        return candidate
+
+    def write_model_test_image(self, model_id: str, record_id: str, file_name: str, content: bytes) -> Path:
+        path = self.model_test_path(model_id, record_id, file_name)
+        try:
+            path.write_bytes(content)
+        except OSError as exc:
+            raise ValidationError("model_test_write_failed", "Could not store the managed model test image.") from exc
+        return path
+
     def managed_model_path(self, path: str | Path) -> Path:
         candidate = Path(path).expanduser().resolve()
         if not _is_within(candidate, self.models_dir.resolve()):
@@ -175,3 +198,16 @@ class Storage:
         directory = self.training_task_dir(task_id)
         if directory.exists():
             shutil.rmtree(directory)
+
+    def copy_training_checkpoint(self, source: str | Path, task_id: str) -> Path:
+        """Stage a previous managed `last.pt` into a new task's private run area."""
+
+        source_path = Path(source).expanduser().resolve()
+        if not _is_within(source_path, self.training_dir.resolve()) or not source_path.is_file():
+            raise ValidationError("resume_checkpoint_invalid", "The resume checkpoint is not a managed training artifact.")
+        destination = (self.training_task_dir(task_id) / "resume" / "last.pt").resolve()
+        if not _is_within(destination, self.training_task_dir(task_id).resolve()):
+            raise ValidationError("unsafe_path", "Resume checkpoint path escapes managed training storage.")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, destination)
+        return destination

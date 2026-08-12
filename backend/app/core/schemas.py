@@ -91,6 +91,66 @@ class ImageSplitUpdate(BaseModel):
     split: SplitName
 
 
+class BulkImageSplitUpdate(BaseModel):
+    image_ids: list[str] = Field(min_length=1, max_length=10000)
+    split: SplitName
+
+
+class AutoSplitRequest(BaseModel):
+    train_ratio: float = Field(default=0.8, ge=0, le=1)
+    val_ratio: float = Field(default=0.1, ge=0, le=1)
+    test_ratio: float = Field(default=0.1, ge=0, le=1)
+    seed: int = Field(default=42, ge=0)
+
+    @model_validator(mode="after")
+    def ratios_sum_to_one(self) -> "AutoSplitRequest":
+        if not math.isclose(self.train_ratio + self.val_ratio + self.test_ratio, 1.0, abs_tol=1e-3):
+            raise ValueError("train_ratio, val_ratio and test_ratio must be non-negative and sum to 1")
+        return self
+
+
+class SplitOperationResponse(BaseModel):
+    updated: int
+    split_counts: dict[SplitName, int]
+
+
+class DuplicateReport(BaseModel):
+    images: int
+    duplicate: int
+    similar: int
+    invalid_images: int
+    invalid_image_ids: list[str]
+    phash_distance: int
+    groups: list[dict]
+
+
+class VideoImportResponse(BaseModel):
+    imported: int
+    source_fps: float
+    frame_count: int
+
+
+class TileDatasetRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+    tile_size: int = Field(default=1024, ge=128, le=4096)
+    overlap: float = Field(default=0.2, ge=0, lt=0.9)
+    keep_empty_tiles: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def strip_tile_name(cls, value: str) -> str:
+        return value.strip()
+
+
+class TileDatasetResponse(BaseModel):
+    dataset_id: str
+    source_dataset_id: str
+    generated_images: int
+    generated_annotations: int
+    skipped_empty_tiles: int
+
+
 class ImageItemResponse(ORMModel):
     id: str
     dataset_id: str

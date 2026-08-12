@@ -201,3 +201,29 @@ class ModelVersion(Base, TimestampMixin):
     dataset: Mapped[Dataset | None] = relationship(back_populates="model_versions")
     training_task: Mapped[TrainingTask | None] = relationship(back_populates="model_versions", foreign_keys=[training_task_id])
     source_model: Mapped["ModelVersion | None"] = relationship(remote_side=[id], foreign_keys=[source_model_id])
+
+
+class ModelTestRecord(Base, TimestampMixin):
+    __tablename__ = "model_test_records"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    model_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id", ondelete="CASCADE"), index=True, nullable=False)
+    file_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    image_path: Mapped[str] = mapped_column(Text, nullable=False)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+    model: Mapped["ModelVersion"] = relationship()
+
+
+class ModelEvaluationRecord(Base, TimestampMixin):
+    __tablename__ = "model_evaluation_records"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    model_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id", ondelete="CASCADE"), index=True, nullable=False)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), index=True, nullable=False)
+    split: Mapped[str] = mapped_column(String(16), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    iou: Mapped[float] = mapped_column(Float, nullable=False)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+    model: Mapped["ModelVersion"] = relationship()

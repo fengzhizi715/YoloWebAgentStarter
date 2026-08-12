@@ -14,6 +14,7 @@ from app.training.schemas import (
     TrainingTaskCreate,
     TrainingTaskList,
     TrainingTaskResponse,
+    TrainingTaskResumeRequest,
 )
 from app.training.service import TrainingService
 
@@ -65,6 +66,16 @@ def create_task(
     service: TrainingService = Depends(get_training_service),
 ) -> TrainingTaskResponse:
     return service.create_task(session, payload)
+
+
+@router.post("/tasks/{task_id}/resume", response_model=TrainingTaskResponse, status_code=201)
+def resume_task(
+    task_id: str,
+    payload: TrainingTaskResumeRequest,
+    session: Session = Depends(get_session),
+    service: TrainingService = Depends(get_training_service),
+) -> TrainingTaskResponse:
+    return service.resume_task(session, task_id, payload)
 
 
 @router.get("/tasks/{task_id}", response_model=TrainingTaskResponse)

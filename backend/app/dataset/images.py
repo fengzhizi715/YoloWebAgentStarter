@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError, ValidationError
 from app.core.ids import new_id
 from app.core.models import ImageItem
-from app.core.schemas import ScanImagesResponse, SplitName
+from app.core.schemas import AutoSplitRequest, BulkImageSplitUpdate, ScanImagesResponse, SplitName, SplitOperationResponse
 from app.core.storage import SUPPORTED_IMAGE_SUFFIXES, Storage
 from app.dataset.service import get_dataset, refresh_dataset_counts
 
@@ -116,6 +117,41 @@ def update_image_split(session: Session, image_id: str, split: SplitName) -> Ima
     session.commit()
     session.refresh(image)
     return image
+
+
+def split_counts(session: Session, dataset_id: str) -> dict[SplitName, int]:
+    counts: dict[SplitName, int] = {"train": 0, "val": 0, "test": 0}
+    counts.update(dict(session.execute(select(ImageItem.split, func.count(ImageItem.id)).where(ImageItem.dataset_id == dataset_id).group_by(ImageItem.split)).all()))
+    return counts
+
+
+def update_image_splits(session: Session, dataset_id: str, payload: BulkImageSplitUpdate) -> SplitOperationResponse:
+    get_dataset(session, dataset_id)
+    ids = list(dict.fromkeys(payload.image_ids))
+    images = list(session.scalars(select(ImageItem).where(ImageItem.dataset_id == dataset_id, ImageItem.id.in_(ids))))
+    if len(images) != len(ids):
+        raise NotFoundError("image_not_found", "One or more images were not found in this dataset.")
+    for image in images:
+        image.split = payload.split
+    session.commit()
+    return SplitOperationResponse(updated=len(images), split_counts=split_counts(session, dataset_id))
+
+
+def auto_split_images(session: Session, dataset_id: str, payload: AutoSplitRequest) -> SplitOperationResponse:
+    """Adapt upstream DatasetSplitProcessor's deterministic target-balancing for Starter's flat image model."""
+    get_dataset(session, dataset_id)
+    images = list(session.scalars(select(ImageItem).where(ImageItem.dataset_id == dataset_id).order_by(ImageItem.id)))
+    random.Random(payload.seed).shuffle(images)
+    ratios = {"train": payload.train_ratio, "val": payload.val_ratio, "test": payload.test_ratio}
+    targets = {split: ratio * len(images) for split, ratio in ratios.items()}
+    counts = {split: 0 for split in ratios}
+    for image in images:
+        candidates = [split for split, ratio in ratios.items() if ratio > 0] or ["train"]
+        split = min(candidates, key=lambda name: (counts[name] / max(targets[name], 1), ("train", "val", "test").index(name)))
+        image.split = split
+        counts[split] += 1
+    session.commit()
+    return SplitOperationResponse(updated=len(images), split_counts=split_counts(session, dataset_id))
 
 
 def delete_image(session: Session, storage: Storage, image_id: str) -> None:

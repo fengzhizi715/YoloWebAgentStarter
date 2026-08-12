@@ -29,6 +29,7 @@ from app.training.schemas import (
     TrainingTaskCreate,
     TrainingTaskList,
     TrainingTaskResponse,
+    TrainingTaskResumeRequest,
 )
 
 
@@ -40,6 +41,30 @@ class TrainingService:
         self.queue.configure(session_factory, storage)
 
     def create_task(self, session: Session, payload: TrainingTaskCreate) -> TrainingTaskResponse:
+        return self._create_task(session, payload)
+
+    def resume_task(self, session: Session, task_id: str, payload: TrainingTaskResumeRequest) -> TrainingTaskResponse:
+        previous = self.get_task(session, task_id)
+        if previous.status not in {"completed", "failed", "stopped"}:
+            raise ValidationError("resume_task_not_finished", "Only completed, failed, or stopped training tasks can be resumed.")
+        checkpoint = checkpoint_paths(previous.run_dir or "").get("last")
+        if checkpoint is None:
+            raise NotFoundError("resume_checkpoint_not_found", "This training task has no managed last.pt checkpoint.")
+        source_config = dict(previous.config_json or {})
+        source_config["name"] = (payload.name or f"{previous.name} (resume)").strip()
+        if payload.epochs is not None:
+            source_config["epochs"] = payload.epochs
+        task_payload = TrainingTaskCreate.model_validate(source_config)
+        return self._create_task(session, task_payload, resume_checkpoint=Path(checkpoint), resume_source_task_id=previous.id)
+
+    def _create_task(
+        self,
+        session: Session,
+        payload: TrainingTaskCreate,
+        *,
+        resume_checkpoint: Path | None = None,
+        resume_source_task_id: str | None = None,
+    ) -> TrainingTaskResponse:
         dataset = get_dataset(session, payload.dataset_id)
         task_type = payload.task_type or TaskType(dataset.task_type)
         if task_type.value != dataset.task_type:
@@ -53,6 +78,8 @@ class TrainingService:
         export_root = task_root / "dataset"
         run_dir = task_root / "run"
         try:
+            if resume_checkpoint is not None:
+                model_reference = str(self.storage.copy_training_checkpoint(resume_checkpoint, task_id))
             export = export_dataset_directory(session, self.storage, dataset.id, export_root)
             data_yaml = str(export["data_yaml"])
             command = build_training_command(
@@ -69,6 +96,7 @@ class TrainingService:
                 optimizer=payload.optimizer,
                 lr0=payload.lr0,
                 patience=payload.patience,
+                resume=resume_checkpoint is not None,
             )
             task = TrainingTask(
                 id=task_id,
@@ -88,7 +116,7 @@ class TrainingService:
                 optimizer=payload.optimizer,
                 lr0=payload.lr0,
                 patience=payload.patience,
-                config_json=payload.model_dump(),
+                config_json={**payload.model_dump(), "resume_source_task_id": resume_source_task_id} if resume_source_task_id else payload.model_dump(),
                 command_args_json=command.args,
                 command_preview=command.readable,
                 export_path=str(export["root"]),

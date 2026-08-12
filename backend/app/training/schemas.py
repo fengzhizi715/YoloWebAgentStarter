@@ -27,6 +27,11 @@ class TrainingTaskCreate(BaseModel):
     patience: int | None = Field(default=None, ge=0)
 
 
+class TrainingTaskResumeRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    epochs: int | None = Field(default=None, ge=1, le=10000)
+
+
 class TrainingTaskResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

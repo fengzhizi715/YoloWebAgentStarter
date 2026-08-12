@@ -5,6 +5,7 @@ SQLAlchemy==2.0.36
 alembic==1.14.0
 python-multipart==0.0.19
 Pillow==11.0.0
+opencv-python-headless==4.11.0.86
 PyYAML==6.0.2
 # ultralytics==8.3.40 calculates validation AP with np.trapz, removed in NumPy 2.
 # Keep this constraint platform-independent: its upstream package metadata only

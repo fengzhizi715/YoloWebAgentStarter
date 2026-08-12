@@ -77,6 +77,7 @@ def build_training_command(
     optimizer: str | None = None,
     lr0: float | None = None,
     patience: int | None = None,
+    resume: bool = False,
 ) -> TrainingCommand:
     run_path = Path(run_dir).resolve()
     args = [
@@ -102,4 +103,6 @@ def build_training_command(
         args.append(f"lr0={lr0}")
     if patience is not None:
         args.append(f"patience={patience}")
+    if resume:
+        args.append("resume=True")
     return TrainingCommand(args=args, readable=shlex.join(args))

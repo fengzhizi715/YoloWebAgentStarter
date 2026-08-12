@@ -38,3 +38,25 @@ class TrainingMetricsParser:
                         pass
                     break
         return result
+
+    def parse_history(self, path: str | Path) -> list[dict[str, float]]:
+        csv_path = Path(path)
+        if not csv_path.is_file():
+            return []
+        with csv_path.open("r", encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        history: list[dict[str, float]] = []
+        for row in rows:
+            values = {key.strip().lower(): value for key, value in row.items()}
+            point: dict[str, float] = {}
+            for output, aliases in {"epoch": ("epoch",), "precision": ("metrics/precision(b)", "metrics/precision(p)", "precision"), "recall": ("metrics/recall(b)", "metrics/recall(p)", "recall"), "map50": ("metrics/map50(b)", "metrics/map50(p)", "map50"), "map50_95": ("metrics/map50-95(b)", "metrics/map50-95(p)", "map50_95")}.items():
+                for alias in aliases:
+                    try:
+                        if values.get(alias) not in (None, ""):
+                            point[output] = float(values[alias])
+                            break
+                    except ValueError:
+                        continue
+            if point:
+                history.append(point)
+        return history

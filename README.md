@@ -1,6 +1,6 @@
 # YoloWebAgentStarter
 
-面向本地单用户的 YOLO 数据集工作台：完成图片导入、人工标注、数据校验、YOLO 交换、本地训练和受管模型产物的一条轻量闭环。
+面向本地单用户的 YOLO 数据集工作台：完成图片/视频帧导入、人工标注、数据校验、YOLO/COCO 交换、本地训练、评估和受管模型产物的一条轻量闭环。
 
 ```text
 图片 → 数据集 → 标注 → 校验 → YOLO 导入 / 导出 → 本地训练 → PT / ONNX
@@ -20,12 +20,13 @@
 
 | 能力 | 说明 |
 |---|---|
-| 数据集 | 创建数据集和类别、浏览器上传、受限本地目录扫描、持久化 split 管理 |
+| 数据集 | 创建数据集和类别、浏览器上传、视频抽帧、受限本地目录扫描、持久化 split 管理、批量及可复现自动 split、只读重复/相似图报告和派生切片数据集 |
 | 标注 | detect bbox、segment polygon、OBB 选择/移动/缩放/旋转、单标签 classify |
 | SAM | segment 的框选/点选建议；未配置模型时仅提供明确标识的 review-only 框形建议 |
-| 数据交换 | YOLO detect / segment / OBB ZIP 导入与导出；YOLO classify 目录布局导入与导出 |
-| 训练 | 本地 FIFO 队列、日志、进度、停止控制、best/last checkpoint 和训练摘要 |
-| 模型 | 训练产物的受管 PT 下载、元数据管理、去重 FP32 ONNX 导出 |
+| 数据交换 | YOLO detect / segment / OBB ZIP 导入与导出；YOLO classify 目录布局导入与导出；detect/segment COCO ZIP 导入与导出 |
+| 训练 | 本地 FIFO 队列、日志、进度、停止控制、从受管 last.pt 续跑、指标摘要/趋势、配置快照和 best/last checkpoint |
+| 模型 | 训练产物的受管 PT 下载、持久化图片快速测试、同数据集模型比较、可审阅预标注、本地 split 评估/错误样本、去重 FP32 ONNX 导出 |
+| 数据质量 | 标注覆盖率、类别分布、小目标、重叠 bbox 和类别失衡提示 |
 | 安全边界 | 受管存储根目录、导入目录边界、ZIP 防资源耗尽限制、默认 localhost 绑定 |
 
 ### 任务支持
@@ -37,7 +38,7 @@
 | `obb` | 绝对像素的中心、尺寸、角度 | 支持 | 支持 |
 | `classify` | 每张图片一个类别 | 标准 `split/class/image` 目录 | 支持 |
 
-不包含：登录/RBAC、协作、Agent、Workflow、批量自动标注、文本提示分割、Evaluation、Deployment、pose、云训练和分布式训练。完整边界见 [Community v2 功能矩阵](phase1_scope.md)。
+不包含：登录/RBAC、协作、Agent、Workflow、无人值守批量自动标注、文本提示分割、Deployment、pose、云训练和分布式训练。完整边界见 [Community v2 功能矩阵](phase1_scope.md)。
 
 ## 快速开始
 
