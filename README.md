@@ -62,7 +62,7 @@ npm --prefix frontend install
 ./run-frontend.sh
 ```
 
-打开 <http://127.0.0.1:5173>；API 地址为 <http://127.0.0.1:8000>。也可以执行 `./run-all.sh` 同时启动两个服务，并以 `Ctrl+C` 一并停止。
+打开 <http://127.0.0.1:5173>；API 地址为 <http://127.0.0.1:8000>。也可以执行 `./run-all.sh`（或 `sh run-all.sh`）同时启动两个服务，并以 `Ctrl+C` 一并停止。
 
 > 首次以 `yolo11n.pt`、`yolo11n-seg.pt` 等命名权重训练时，Ultralytics 可能下载对应权重。请在确认适用许可后使用，且不要提交权重、数据集或产物。
 

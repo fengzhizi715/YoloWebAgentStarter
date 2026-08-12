@@ -1,4 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# `sh run-all.sh` ignores a Bash shebang. Re-exec so that this launcher works
+# for both that common invocation and direct `./run-all.sh` execution.
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 cd "$(dirname "$0")"

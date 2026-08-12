@@ -17,7 +17,7 @@ Start the frontend in another terminal:
 ./run-frontend.sh
 ```
 
-Open `http://127.0.0.1:5173`. Both development servers are local-only by default. Alternatively, run `./run-all.sh` from the repository root to start both processes; `Ctrl+C` stops them together.
+Open `http://127.0.0.1:5173`. Both development servers are local-only by default. Alternatively, run `./run-all.sh` (or `sh run-all.sh`) from the repository root to start both processes; `Ctrl+C` stops them together.
 
 ## 2. Create data and annotate
 
