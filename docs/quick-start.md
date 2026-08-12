@@ -62,6 +62,7 @@ Never point the database, import directory, or model registry at an Enterprise c
 
 | Symptom | Action |
 |---|---|
+| Training fails with `AttributeError: module 'numpy' has no attribute 'trapz'` | The environment has NumPy 2.x, which is incompatible with the pinned `ultralytics==8.3.40` validation code. Reinstall the project requirements in the repository `.venv` to use NumPy 1.x: `.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt`. |
 | Dependency resolver reports NumPy conflicts | Recreate `.venv` with Python 3.11 or 3.12, then install the pinned requirements. Python 3.13 is not a release target. |
 | API will not start | Check `YWA_HOST` is `127.0.0.1`, then run `PYTHONPATH=backend .venv/bin/alembic -c backend/alembic.ini upgrade head`. |
 | Training is rejected | Validate the dataset, ensure both `train` and `val` contain images, and use a model family matching the dataset type. |

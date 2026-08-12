@@ -6,6 +6,10 @@ alembic==1.14.0
 python-multipart==0.0.19
 Pillow==11.0.0
 PyYAML==6.0.2
+# ultralytics==8.3.40 calculates validation AP with np.trapz, removed in NumPy 2.
+# Keep this constraint platform-independent: its upstream package metadata only
+# applies it on macOS, but the same training failure occurs on Linux and Windows.
+numpy>=1.23,<2.0.0
 ultralytics==8.3.40
 onnx>=1.17.0
 onnxruntime==1.27.0
