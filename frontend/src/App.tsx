@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnnotationCanvas, type AnnotationDraft } from "./annotation/AnnotationCanvas";
 import { api, apiUrl } from "./api/client";
 import { StarterShell, type StarterSection } from "./components/StarterShell";
 import { TrainingView } from "./pages/TrainingView";
 import { ModelsView } from "./pages/ModelsView";
-import type { Annotation, BBox, ClassLabel, Dataset, DatasetQualityReport, DuplicateReport, ImageItem, SamCapabilities, SamPrediction, SplitName, TaskType, ValidationReport } from "./types";
+import type { Annotation, BBox, ClassLabel, Dataset, DatasetQualityReport, DuplicateReport, ImageItem, SamCapabilities, SamPrediction, TaskType, ValidationReport } from "./types";
 
-type View = "workspace" | "dataset" | "annotation" | "training" | "models";
+type View = "workspace" | "annotation" | "training" | "models";
+type CardReportKind = "validation" | "quality" | "duplicates";
 
 export default function App() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -17,7 +18,6 @@ export default function App() {
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [proposalDrafts, setProposalDrafts] = useState<AnnotationDraft[]>();
   const [view, setView] = useState<View>("workspace");
-  const [duplicates, setDuplicates] = useState<DuplicateReport>();
   const [activeClassId, setActiveClassId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -33,12 +33,11 @@ export default function App() {
     }
   };
 
-  const loadDataset = async (dataset: Dataset, nextView: View = "dataset") => {
+  const loadDataset = async (dataset: Dataset, nextView: View = "workspace") => {
     setSelected(dataset);
     setView(nextView);
     setSelectedImage(undefined);
     setProposalDrafts(undefined);
-    setDuplicates(undefined);
     const [nextClasses, nextImages] = await Promise.all([api.listClasses(dataset.id), api.listImages(dataset.id)]);
     setClasses(nextClasses);
     setImages(nextImages.items);
@@ -86,7 +85,7 @@ export default function App() {
 
   const continueAnnotation = async (dataset: Dataset) => {
     await run(async () => {
-      await loadDataset(dataset, "dataset");
+      await loadDataset(dataset);
       const nextImages = await api.listImages(dataset.id);
       const image = nextImages.items.find((item) => item.status === "unannotated") ?? nextImages.items[0];
       if (!image) {
@@ -101,7 +100,7 @@ export default function App() {
   };
 
   const displayedDataset = selected;
-  const activeSection: StarterSection = view === "annotation" || view === "dataset" ? "workspace" : view;
+  const activeSection: StarterSection = view === "annotation" ? "workspace" : view;
   const navigate = (section: StarterSection) => {
     if (section === "training" && !selected && datasets[0]) {
       void loadDataset(datasets[0], "training");
@@ -127,7 +126,7 @@ export default function App() {
           initialDrafts={proposalDrafts}
           activeClassId={activeClassId}
           onClassChange={setActiveClassId}
-          onBack={() => setView("dataset")}
+          onBack={() => setView("workspace")}
           onPrevious={() => { const index = images.findIndex((item) => item.id === selectedImage.id); if (index > 0) void openImage(images[index - 1]); }}
           onNext={() => { const index = images.findIndex((item) => item.id === selectedImage.id); if (index >= 0 && index < images.length - 1) void openImage(images[index + 1]); }}
           hasPrevious={images.findIndex((item) => item.id === selectedImage.id) > 0}
@@ -154,39 +153,17 @@ export default function App() {
         <TrainingView datasets={datasets} dataset={displayedDataset} onDatasetChange={(dataset) => void loadDataset(dataset, "training")} onBack={() => setView("workspace")} />
       ) : view === "models" && displayedDataset ? (
         <ModelsView dataset={displayedDataset} onBack={() => setView("workspace")} onOpenPreannotated={(image, drafts) => { setSelectedImage(image); setAnnotations([]); setProposalDrafts(drafts as AnnotationDraft[]); setView("annotation"); }} />
-      ) : view === "dataset" && displayedDataset ? (
-        <DatasetDetail
-          selected={displayedDataset}
-          classes={classes}
-          images={images}
-          duplicates={duplicates}
-          activeClassId={activeClassId}
-          busy={busy}
-          onBack={() => setView("workspace")}
-          onAddClass={(name) => selected && run(async () => { const item = await api.createClass(selected.id, name); setClasses((items) => [...items, item]); setActiveClassId(item.id); setNotice("类别已添加"); })}
-          onUpload={(files, split) => selected && run(async () => { const result = await api.uploadImages(selected.id, files, split); setImages((items) => [...items, ...result.items]); await refreshDatasets(); setNotice(`已导入 ${result.imported} 张图片`); })}
-          onScan={(path, split) => selected && run(async () => { const result = await api.scanImages(selected.id, path, split); const nextImages = await api.listImages(selected.id); setImages(nextImages.items); await refreshDatasets(); setNotice(`扫描完成：导入 ${result.imported} 张，跳过 ${result.skipped} 张`); })}
-          onDuplicates={() => selected && run(async () => setDuplicates(await api.duplicateReport(selected.id)))}
-          onVideo={(file, split, interval) => selected && run(async () => { const result = await api.importVideo(selected.id, file, split, interval); const next = await api.listImages(selected.id); setImages(next.items); setNotice(`已从视频导入 ${result.imported} 帧`); await refreshDatasets(); })}
-          onActiveClassChange={setActiveClassId}
-          onOpenImage={openImage}
-          onOpenTraining={() => navigate("training")}
-          onOpenModels={() => navigate("models")}
-          onSplitChange={(image, split) => selected && run(async () => { const updated = await api.updateImageSplit(selected.id, image.id, split); setImages((items) => items.map((item) => item.id === image.id ? updated : item)); await refreshDatasets(); })}
-          onBulkSplit={(ids, split) => selected && run(async () => { const result = await api.updateImageSplits(selected.id, ids, split); const next = await api.listImages(selected.id); setImages(next.items); setNotice(`已更新 ${result.updated} 张图片的 split`); await refreshDatasets(); })}
-          onAutoSplit={() => selected && run(async () => { const result = await api.autoSplitImages(selected.id, { train_ratio: .8, val_ratio: .1, test_ratio: .1, seed: 42 }); const next = await api.listImages(selected.id); setImages(next.items); setNotice(`已按 80/10/10 分配 ${result.updated} 张图片`); await refreshDatasets(); })}
-          onTile={(name, tileSize, overlap, keepEmpty) => selected && run(async () => { const result = await api.tileDataset(selected.id, { name, tile_size: tileSize, overlap, keep_empty_tiles: keepEmpty }); await refreshDatasets(); const datasets = await api.listDatasets(); const derived = datasets.find((item) => item.id === result.dataset_id); if (derived) await loadDataset(derived); setNotice(`已生成切片数据集：${result.generated_images} 张图片 / ${result.generated_annotations} 个标注`); })}
-        />
       ) : (
         <DatasetHome
           datasets={datasets}
           busy={busy}
-          onSelect={(dataset) => run(() => loadDataset(dataset))}
           onCreate={(name, taskType) => run(async () => { const dataset = await api.createDataset(name, taskType); await refreshDatasets(); await loadDataset(dataset); setNotice("数据集已创建"); })}
           onImport={(file, name, taskType, format) => run(async () => { const result = format === "coco" ? await api.importCoco(file, name, taskType) : await api.importYolo(file, name, taskType); await refreshDatasets(); await loadDataset(result.dataset); setNotice(`已导入 ${result.imported_images} 张图片和 ${result.imported_annotations} 个标注`); })}
           onValidate={(dataset) => runResult(() => api.validateDataset(dataset.id))}
           onQuality={(dataset) => runResult(() => api.qualityReport(dataset.id))}
           onContinueAnnotation={(dataset) => void continueAnnotation(dataset)}
+          onTrain={(dataset) => void run(() => loadDataset(dataset, "training"))}
+          onDuplicates={(dataset) => runResult(() => api.duplicateReport(dataset.id))}
           onDelete={(dataset) => run(async () => {
             await api.deleteDataset(dataset.id);
             setDatasets((items) => items.filter((item) => item.id !== dataset.id));
@@ -197,7 +174,6 @@ export default function App() {
               setSelectedImage(undefined);
               setAnnotations([]);
               setProposalDrafts(undefined);
-              setDuplicates(undefined);
               setActiveClassId("");
             }
             setNotice(`数据集“${dataset.name}”已删除`);
@@ -211,22 +187,28 @@ export default function App() {
 export function DatasetHome(props: {
   datasets: Dataset[];
   busy: boolean;
-  onSelect: (dataset: Dataset) => void;
   onCreate: (name: string, type: TaskType) => void;
   onImport: (file: File, name: string, type: TaskType, format: "yolo" | "coco") => void;
   onValidate: (dataset: Dataset) => Promise<ValidationReport | undefined>;
   onQuality: (dataset: Dataset) => Promise<DatasetQualityReport | undefined>;
   onContinueAnnotation: (dataset: Dataset) => void;
+  onTrain: (dataset: Dataset) => void;
+  onDuplicates: (dataset: Dataset) => Promise<DuplicateReport | undefined>;
   onDelete: (dataset: Dataset) => void;
 }) {
   const [dialog, setDialog] = useState<"create" | "import" | null>(null);
+  const [exportTarget, setExportTarget] = useState<Dataset>();
+  const [exportFormat, setExportFormat] = useState<"yolo" | "coco">("yolo");
   const [deleteTarget, setDeleteTarget] = useState<Dataset>();
   const [name, setName] = useState("");
   const [taskType, setTaskType] = useState<TaskType>("detect");
   const [archive, setArchive] = useState<File>();
   const [format, setFormat] = useState<"yolo" | "coco">("yolo");
+  const [draggingArchive, setDraggingArchive] = useState(false);
   const [validationReports, setValidationReports] = useState<Record<string, ValidationReport>>({});
   const [qualityReports, setQualityReports] = useState<Record<string, DatasetQualityReport>>({});
+  const [duplicateReports, setDuplicateReports] = useState<Record<string, DuplicateReport>>({});
+  const [expandedReports, setExpandedReports] = useState<Record<string, CardReportKind | undefined>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const closeDialog = () => {
@@ -246,11 +228,40 @@ export function DatasetHome(props: {
     props.onImport(archive, name.trim(), taskType, format);
     closeDialog();
   };
+  const chooseArchive = (file?: File) => {
+    if (file) setArchive(file);
+  };
+  const openExport = (dataset: Dataset) => {
+    setExportTarget(dataset);
+    setExportFormat("yolo");
+  };
+  const exportUrl = exportTarget && (exportFormat === "coco" ? api.exportCocoUrl(exportTarget.id) : api.exportYoloUrl(exportTarget.id));
+  const isReportOpen = (datasetId: string, kind: CardReportKind) => expandedReports[datasetId] === kind;
+  const closeReport = (datasetId: string) => setExpandedReports((items) => ({ ...items, [datasetId]: undefined }));
+  const openReport = (datasetId: string, kind: CardReportKind) => setExpandedReports((items) => ({ ...items, [datasetId]: kind }));
+  const toggleValidation = async (dataset: Dataset) => {
+    if (isReportOpen(dataset.id, "validation")) return closeReport(dataset.id);
+    if (validationReports[dataset.id]) return openReport(dataset.id, "validation");
+    const report = await props.onValidate(dataset);
+    if (report) { setValidationReports((items) => ({ ...items, [dataset.id]: report })); openReport(dataset.id, "validation"); }
+  };
+  const toggleQuality = async (dataset: Dataset) => {
+    if (isReportOpen(dataset.id, "quality")) return closeReport(dataset.id);
+    if (qualityReports[dataset.id]) return openReport(dataset.id, "quality");
+    const report = await props.onQuality(dataset);
+    if (report) { setQualityReports((items) => ({ ...items, [dataset.id]: report })); openReport(dataset.id, "quality"); }
+  };
+  const toggleDuplicates = async (dataset: Dataset) => {
+    if (isReportOpen(dataset.id, "duplicates")) return closeReport(dataset.id);
+    if (duplicateReports[dataset.id]) return openReport(dataset.id, "duplicates");
+    const report = await props.onDuplicates(dataset);
+    if (report) { setDuplicateReports((items) => ({ ...items, [dataset.id]: report })); openReport(dataset.id, "duplicates"); }
+  };
 
   return <main className="dataset-home-page">
     <header className="dataset-home-header">
       <div><h1>数据集</h1><p>在这里创建、导入和管理你的 YOLO 数据集。</p></div>
-      <div className="header-actions"><button className="button" onClick={() => setDialog("import")}>导入数据</button><button className="button primary" onClick={() => setDialog("create")}>新建数据集</button></div>
+      <div className="header-actions"><button className="button" onClick={() => setDialog("import")}>导入数据集</button><button className="button primary" onClick={() => setDialog("create")}>新建数据集</button></div>
     </header>
     <section className="dataset-overview">
       <div className="section-title-row"><div><span className="eyebrow">ALL DATASETS</span><h2>所有数据集</h2></div><span className="dataset-total">{props.datasets.length} 个数据集</span></div>
@@ -260,22 +271,38 @@ export function DatasetHome(props: {
           <div className="dataset-metrics"><span><small>图片</small><strong>{dataset.image_count.toLocaleString()}</strong></span><span><small>类别</small><strong>{dataset.class_count.toLocaleString()}</strong></span></div>
           <div className="dataset-progress"><span>标注进度</span><strong>{dataset.image_count ? `${Math.round(dataset.annotated_image_count / dataset.image_count * 100)}%` : "等待导入"}</strong></div>
           <div className="progress-track"><i style={{ width: `${dataset.image_count ? dataset.annotated_image_count / dataset.image_count * 100 : 0}%` }} /></div>
-          <button className="button primary dataset-primary-action" onClick={() => props.onSelect(dataset)}>打开数据集</button>
-          <div className="dataset-card-actions"><button className="button" disabled={props.busy || !dataset.image_count} onClick={() => props.onContinueAnnotation(dataset)}>继续标注</button><a className="button" href={api.exportYoloUrl(dataset.id)}>导出 YOLO</a>{["detect", "segment"].includes(dataset.task_type) ? <a className="button" href={api.exportCocoUrl(dataset.id)}>导出 COCO</a> : <span aria-hidden="true" />}<button className="button" disabled={props.busy} onClick={() => void props.onValidate(dataset).then((report) => report && setValidationReports((items) => ({ ...items, [dataset.id]: report })))}>运行校验</button><button className="button" disabled={props.busy} onClick={() => void props.onQuality(dataset).then((report) => report && setQualityReports((items) => ({ ...items, [dataset.id]: report })))}>质量报告</button><button className="button dataset-delete-action" disabled={props.busy} onClick={() => setDeleteTarget(dataset)}>删除</button></div>
-          {validationReports[dataset.id] && <ValidationPanel report={validationReports[dataset.id]} compact />}
-          {qualityReports[dataset.id] && <QualityPanel report={qualityReports[dataset.id]} compact />}
+          <button className="button primary dataset-primary-action" disabled={props.busy || !dataset.image_count} onClick={() => props.onContinueAnnotation(dataset)}>继续标注</button>
+          <div className="dataset-card-actions">
+            <button className="button" disabled={props.busy} onClick={() => props.onTrain(dataset)}>训练</button>
+            <button className="button" disabled={props.busy || !dataset.image_count} onClick={() => openExport(dataset)}>导出数据集</button>
+            <button className="button" disabled={props.busy || !dataset.image_count} onClick={() => void toggleDuplicates(dataset)}>{isReportOpen(dataset.id, "duplicates") ? "收起重复图" : "重复/相似图"}</button>
+            <button className="button" disabled={props.busy} onClick={() => void toggleValidation(dataset)}>{isReportOpen(dataset.id, "validation") ? "收起校验" : "运行校验"}</button>
+            <button className="button" disabled={props.busy} onClick={() => void toggleQuality(dataset)}>{isReportOpen(dataset.id, "quality") ? "收起报告" : "质量报告"}</button>
+            <button className="button dataset-delete-action" disabled={props.busy} onClick={() => setDeleteTarget(dataset)}>删除</button>
+          </div>
+          {isReportOpen(dataset.id, "validation") && validationReports[dataset.id] && <CardReport onClose={() => closeReport(dataset.id)}><ValidationPanel report={validationReports[dataset.id]} compact /></CardReport>}
+          {isReportOpen(dataset.id, "quality") && qualityReports[dataset.id] && <CardReport onClose={() => closeReport(dataset.id)}><QualityPanel report={qualityReports[dataset.id]} compact /></CardReport>}
+          {isReportOpen(dataset.id, "duplicates") && duplicateReports[dataset.id] && <CardReport onClose={() => closeReport(dataset.id)}><DuplicatePanel report={duplicateReports[dataset.id]} compact /></CardReport>}
         </article>)}
         {!props.datasets.length && <section className="dataset-empty-card"><span className="dataset-empty-icon">□</span><h2>还没有数据集</h2><p>新建一个空数据集，或导入已有的 YOLO ZIP 数据集。</p><div><button className="button" onClick={() => setDialog("import")}>导入数据</button><button className="button primary" onClick={() => setDialog("create")}>新建数据集</button></div></section>}
       </div>
     </section>
-    {dialog && <div className="modal-backdrop" role="presentation" onMouseDown={closeDialog}>
-      <section className="dataset-dialog" role="dialog" aria-modal="true" aria-labelledby="dataset-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
-        <header><div><span className="eyebrow">{dialog === "create" ? "NEW DATASET" : "IMPORT DATASET"}</span><h2 id="dataset-dialog-title">{dialog === "create" ? "新建数据集" : `导入 ${format === "yolo" ? "YOLO" : "COCO"} 数据集`}</h2><p>{dialog === "create" ? "创建后即可上传图片并开始标注。" : format === "yolo" ? "导入包含 data.yaml、图片和标签的 YOLO ZIP 文件。" : "导入包含 annotations.json（或 instances.json）和图片的 COCO ZIP 文件。"}</p></div><button className="icon-button" onClick={closeDialog} aria-label="关闭">×</button></header>
-        {dialog === "import" && <div className="import-format"><label>导入格式<select value={format} onChange={(event) => setFormat(event.target.value as "yolo" | "coco")}><option value="yolo">YOLO ZIP</option><option value="coco">COCO ZIP（detect / segment）</option></select></label><span>{format === "yolo" ? "ZIP 内应包含 data.yaml、images 和 labels" : "ZIP 内应包含 annotations.json/instances.json 与 images"}</span></div>}
-        <label>数据集名称<input value={name} placeholder={dialog === "import" ? "例如：road-signs" : "例如：my-dataset"} onChange={(event) => setName(event.target.value)} autoFocus /></label>
-        <label>任务类型<select value={taskType} onChange={(event) => setTaskType(event.target.value as TaskType)}><option value="detect">目标检测（Bounding Box）</option><option value="segment">实例分割（Polygon / SAM）</option><option value="obb">旋转框（OBB）</option><option value="classify">图像分类</option></select></label>
-        {dialog === "import" && <><input ref={fileRef} type="file" accept=".zip,application/zip" hidden onChange={(event) => setArchive(event.target.files?.[0])} /><button className="import-file-picker" onClick={() => fileRef.current?.click()}><span>⇧</span><strong>{archive?.name ?? `选择 ${format.toUpperCase()} ZIP 文件`}</strong><small>{archive ? `${Math.ceil(archive.size / 1024)} KB` : format === "yolo" ? "ZIP 内应包含 data.yaml、images 和 labels" : "ZIP 内应包含 annotations.json/instances.json 与 images"}</small></button></>}
-        <footer><button className="button" onClick={closeDialog}>取消</button><button className="button primary" disabled={props.busy || !name.trim() || (dialog === "import" && !archive)} onClick={dialog === "create" ? create : importArchive}>{dialog === "create" ? "创建数据集" : "开始导入"}</button></footer>
+    {dialog && <div className="modal-backdrop data-exchange-backdrop" role="presentation" onMouseDown={closeDialog}>
+      <section className="dataset-dialog data-exchange-dialog" role="dialog" aria-modal="true" aria-labelledby="dataset-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="data-exchange-header"><div><span className="eyebrow">{dialog === "create" ? "NEW DATASET" : "IMPORT CENTER"}</span><h2 id="dataset-dialog-title">{dialog === "create" ? "新建数据集" : "导入数据集"}</h2><p>{dialog === "create" ? "创建后即可上传图片并开始标注。" : "选择格式、任务类型和压缩包，将已有标注导入本地工作区。"}</p></div><button className="icon-button" onClick={closeDialog} aria-label="关闭">×</button></header>
+        {dialog === "import" && <div className="exchange-steps" aria-label="导入步骤"><span className="active">1 选择格式</span><i /><span className="active">2 上传文件</span><i /><span>3 开始导入</span></div>}
+        {dialog === "import" && <section><span className="exchange-label">数据集格式</span><div className="format-option-grid"><button className={format === "yolo" ? "format-option selected" : "format-option"} onClick={() => setFormat("yolo")}><strong>YOLO ZIP</strong><span>data.yaml、images 与 labels</span></button><button className={format === "coco" ? "format-option selected" : "format-option"} onClick={() => setFormat("coco")}><strong>COCO ZIP</strong><span>annotations.json 与 images</span></button></div></section>}
+        <div className="exchange-fields"><label>数据集名称<input value={name} placeholder={dialog === "import" ? "例如：road-signs" : "例如：my-dataset"} onChange={(event) => setName(event.target.value)} autoFocus /></label><label>任务类型<select value={taskType} onChange={(event) => setTaskType(event.target.value as TaskType)}><option value="detect">目标检测（Bounding Box）</option><option value="segment">实例分割（Polygon / SAM）</option><option value="obb">旋转框（OBB）</option><option value="classify">图像分类</option></select></label></div>
+        {dialog === "import" && <><input ref={fileRef} type="file" accept=".zip,application/zip" hidden onChange={(event) => chooseArchive(event.target.files?.[0])} /><button className={draggingArchive ? "exchange-dropzone dragging" : "exchange-dropzone"} onClick={() => fileRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDraggingArchive(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDraggingArchive(false)} onDrop={(event) => { event.preventDefault(); setDraggingArchive(false); chooseArchive(event.dataTransfer.files[0]); }}><span className="exchange-dropzone-icon">⇧</span><strong>{archive?.name ?? `拖放或选择 ${format.toUpperCase()} ZIP 文件`}</strong><small>{archive ? `${Math.ceil(archive.size / 1024)} KB · 已准备导入` : format === "yolo" ? "ZIP 内应包含 data.yaml、images 和 labels" : "ZIP 内应包含 annotations.json/instances.json 与 images"}</small></button></>}
+        <footer className="data-exchange-footer"><span>{dialog === "import" ? "文件仅导入到本机受管数据目录。" : "创建后可从卡片继续导入图片或已有数据集。"}</span><div><button className="button" onClick={closeDialog}>取消</button><button className="button primary" disabled={props.busy || !name.trim() || (dialog === "import" && !archive)} onClick={dialog === "create" ? create : importArchive}>{dialog === "create" ? "创建数据集" : "开始导入"}</button></div></footer>
+      </section>
+    </div>}
+    {exportTarget && <div className="modal-backdrop data-exchange-backdrop" role="presentation" onMouseDown={() => setExportTarget(undefined)}>
+      <section className="dataset-dialog data-exchange-dialog" role="dialog" aria-modal="true" aria-labelledby="dataset-export-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="data-exchange-header"><div><span className="eyebrow">EXPORT CENTER</span><h2 id="dataset-export-dialog-title">导出“{exportTarget.name}”</h2><p>导出会使用当前已保存的图片 split、类别和标注。</p></div><button className="icon-button" onClick={() => setExportTarget(undefined)} aria-label="关闭">×</button></header>
+        <div className="exchange-summary"><span>任务类型<strong>{taskDescription(exportTarget.task_type)}</strong></span><span>图片<strong>{exportTarget.image_count} 张</strong></span><span>已标注<strong>{exportTarget.annotated_image_count} 张</strong></span></div>
+        <section><span className="exchange-label">导出格式</span><div className="format-option-grid"><button className={exportFormat === "yolo" ? "format-option selected" : "format-option"} onClick={() => setExportFormat("yolo")}><strong>YOLO ZIP</strong><span>标准 YOLO 目录、标签与 data.yaml</span></button>{["detect", "segment"].includes(exportTarget.task_type) && <button className={exportFormat === "coco" ? "format-option selected" : "format-option"} onClick={() => setExportFormat("coco")}><strong>COCO ZIP</strong><span>annotations.json 与原始图片</span></button>}</div></section>
+        <footer className="data-exchange-footer"><span>下载文件会由浏览器保存到默认下载目录。</span><div><button className="button" onClick={() => setExportTarget(undefined)}>取消</button><a className="button primary" href={exportUrl ?? undefined} onClick={() => setExportTarget(undefined)}>下载 {exportFormat.toUpperCase()} ZIP</a></div></footer>
       </section>
     </div>}
     {deleteTarget && <div className="modal-backdrop" role="presentation" onMouseDown={() => setDeleteTarget(undefined)}>
@@ -287,45 +314,9 @@ export function DatasetHome(props: {
   </main>;
 }
 
-function DatasetDetail(props: {
-  selected: Dataset; classes: ClassLabel[]; images: ImageItem[]; duplicates?: DuplicateReport; activeClassId: string; busy: boolean;
-  onBack: () => void; onAddClass: (name: string) => void;
-  onUpload: (files: File[], split: SplitName) => void; onScan: (path: string, split: SplitName) => void; onDuplicates: () => void; onVideo: (file: File, split: SplitName, interval: number) => void;
-  onActiveClassChange: (id: string) => void; onOpenImage: (image: ImageItem) => void; onOpenTraining: () => void; onOpenModels: () => void; onSplitChange: (image: ImageItem, split: SplitName) => void; onBulkSplit: (ids: string[], split: SplitName) => void; onAutoSplit: () => void; onTile: (name: string, tileSize: number, overlap: number, keepEmpty: boolean) => void;
-}) {
-  const [className, setClassName] = useState("");
-  const [split, setSplit] = useState<SplitName>("train");
-  const [scanPath, setScanPath] = useState("");
-  const uploadRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLInputElement>(null);
-  const [tab, setTab] = useState<SplitName | "all">("all");
-  const [status, setStatus] = useState<"all" | "annotated" | "unannotated">("all");
-  const [checked, setChecked] = useState<string[]>([]);
-  const [tileSize, setTileSize] = useState(1024);
-  const [tileOverlap, setTileOverlap] = useState(0.2);
-  const [keepEmptyTiles, setKeepEmptyTiles] = useState(false);
-  const visibleImages = useMemo(() => props.images.filter((image) => (tab === "all" || image.split === tab) && (status === "all" || image.status === status)), [props.images, tab, status]);
-  const toggle = (id: string) => setChecked((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id]);
-
-  return (
-    <main className="dataset-detail-page">
-      <div className="dataset-breadcrumbs"><button onClick={props.onBack}>数据集</button><span>/</span><strong>{props.selected.name}</strong></div>
-      <section className="workspace panel">
-          <div className="workspace-header"><div><span className="eyebrow">DATASET WORKSPACE</span><h1>{props.selected.name}</h1><p>{taskDescription(props.selected.task_type)} · {props.selected.image_count} 张图片 · {props.selected.class_count} 个类别</p></div><div className="header-actions"><button className="button primary" onClick={props.onOpenTraining}>训练</button><button className="button" onClick={props.onOpenModels}>模型</button><a className="button" href={api.exportYoloUrl(props.selected.id)}>导出 YOLO ZIP</a>{["detect", "segment"].includes(props.selected.task_type) && <a className="button" href={api.exportCocoUrl(props.selected.id)}>导出 COCO</a>}</div></div>
-          <div className="action-row"><input ref={uploadRef} type="file" accept="image/*" multiple hidden onChange={(event) => { if (event.target.files) props.onUpload(Array.from(event.target.files), split); event.currentTarget.value = ""; }} /><input ref={videoRef} type="file" accept="video/mp4,video/quicktime,video/x-msvideo" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) props.onVideo(file, split, 30); event.currentTarget.value = ""; }} /><select value={split} onChange={(event) => setSplit(event.target.value as SplitName)}><option value="train">train</option><option value="val">val</option><option value="test">test</option></select><button className="button primary" onClick={() => uploadRef.current?.click()}>上传图片</button><button className="button" onClick={() => videoRef.current?.click()}>视频抽帧（每30帧）</button><input placeholder="扫描受管目录相对路径" value={scanPath} onChange={(event) => setScanPath(event.target.value)} /><button className="button" disabled={!scanPath.trim()} onClick={() => props.onScan(scanPath.trim(), split)}>扫描目录</button><button className="button" onClick={props.onDuplicates}>重复/相似图</button><button className="button" disabled={props.busy} onClick={props.onAutoSplit}>自动划分 80/10/10</button></div>
-          {(["detect", "segment"] as string[]).includes(props.selected.task_type) && <div className="bulk-bar"><strong>生成切片数据集</strong><select value={tileSize} onChange={(event) => setTileSize(Number(event.target.value))}><option value={512}>512 px</option><option value={1024}>1024 px</option><option value={1280}>1280 px</option></select><select value={tileOverlap} onChange={(event) => setTileOverlap(Number(event.target.value))}><option value={0}>无重叠</option><option value={0.1}>10% overlap</option><option value={0.2}>20% overlap</option></select><label><input type="checkbox" checked={keepEmptyTiles} onChange={(event) => setKeepEmptyTiles(event.target.checked)} /> 保留空切片</label><button className="button" disabled={props.busy || !props.images.length} onClick={() => props.onTile(`${props.selected.name}-tiles-${tileSize}`, tileSize, tileOverlap, keepEmptyTiles)}>生成新数据集</button></div>}
-          <div className="split-tabs">{(["all", "train", "val", "test"] as const).map((item) => <button key={item} className={tab === item ? "tab active" : "tab"} onClick={() => setTab(item)}>{item === "all" ? "全部" : item}</button>)}<select className="image-filter" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}><option value="all">全部状态</option><option value="unannotated">未标注</option><option value="annotated">已标注</option></select></div>
-          <div className="class-strip"><span className="eyebrow">CLASSES</span>{props.classes.map((item) => <button key={item.id} className={props.activeClassId === item.id ? "class-chip active" : "class-chip"} onClick={() => props.onActiveClassChange(item.id)}><i style={{ background: item.color }} />{item.class_index}: {item.name}</button>)}<input value={className} placeholder="新增类别" onChange={(event) => setClassName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && className.trim()) { props.onAddClass(className.trim()); setClassName(""); } }} /></div>
-          {props.duplicates && <DuplicatePanel report={props.duplicates} />}
-          {checked.length > 0 && <div className="bulk-bar"><strong>已选择 {checked.length} 张</strong><button className="button" onClick={() => props.onBulkSplit(checked, "train")}>设为 train</button><button className="button" onClick={() => props.onBulkSplit(checked, "val")}>设为 val</button><button className="button" onClick={() => props.onBulkSplit(checked, "test")}>设为 test</button><button className="button" onClick={() => setChecked([])}>取消选择</button></div>}
-          <div className="image-grid">{visibleImages.map((image) => <article className="image-card" key={image.id}><label className="image-check"><input type="checkbox" checked={checked.includes(image.id)} onChange={() => toggle(image.id)} />选择</label><button onClick={() => props.onOpenImage(image)}><img src={apiUrl(image.file_url)} alt={image.file_name} /><div><strong>{image.file_name}</strong><span>{image.status === "annotated" ? "已标注" : "未标注"}</span><select value={image.split} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.stopPropagation(); props.onSplitChange(image, event.target.value as SplitName); }}><option value="train">train</option><option value="val">val</option><option value="test">test</option></select></div></button></article>)}{!visibleImages.length && <div className="empty-state"><strong>开始导入图片</strong><span>上传图片后，在这里选择一张进入标注工作台。</span></div>}</div>
-      </section>
-    </main>
-  );
-}
-
+function CardReport({ children, onClose }: { children: ReactNode; onClose: () => void }) { return <div className="dataset-card-report"><button className="dataset-card-report-close" onClick={onClose}>收起结果</button>{children}</div>; }
 function QualityPanel({ report, compact = false }: { report: DatasetQualityReport; compact?: boolean }) { return <section className={compact ? "quality-panel compact-quality-panel" : "quality-panel"}><div className="quality-summary"><span><small>标注覆盖率</small><strong>{Math.round(report.summary.coverage * 100)}%</strong></span><span><small>标注总数</small><strong>{report.summary.annotation_count}</strong></span><span><small>小目标</small><strong>{report.summary.small_object_count}</strong></span><span><small>问题</small><strong>{report.issues.length}</strong></span></div>{!compact && <div className="quality-grid"><div><h3>类别分布</h3>{report.class_distribution.map((item) => <p key={item.class_id}><span>{item.class_index}. {item.name}</span><b>{item.count}</b><i><em style={{ width: `${Math.max(item.ratio * 100, item.count ? 3 : 0)}%` }} /></i></p>)}</div><div><h3>需要关注</h3>{report.issues.slice(0, 5).map((item, index) => <p key={`${item.type}-${index}`}><b>{item.level}</b><span>{item.message}</span></p>)}{!report.issues.length && <p>当前未发现需要关注的问题。</p>}</div></div>}</section>; }
-function DuplicatePanel({ report }: { report: DuplicateReport }) { return <section className="quality-panel"><div className="quality-summary"><span><small>精确重复</small><strong>{report.duplicate}</strong></span><span><small>相似图片</small><strong>{report.similar}</strong></span><span><small>无效图片</small><strong>{report.invalid_images}</strong></span><span><small>分析图片</small><strong>{report.images}</strong></span></div><div className="quality-grid"><div><h3>相似性分组</h3>{report.groups.slice(0, 6).map((item, index) => <p key={index}><span>{item.kind === "exact" ? "精确重复" : "相似"} · {item.image_ids.length} 张</span><b>{(item.score * 100).toFixed(0)}%</b></p>)}{!report.groups.length && <p>未发现重复或相似图片。</p>}</div><div><h3>处理建议</h3><p>重复检测为只读报告，不会删除任何图片。</p><p>相似图应由你在标注和 split 前人工决定是否保留。</p></div></div></section>; }
+function DuplicatePanel({ report, compact = false }: { report: DuplicateReport; compact?: boolean }) { return <section className={compact ? "quality-panel compact-quality-panel" : "quality-panel"}><div className="quality-summary"><span><small>精确重复</small><strong>{report.duplicate}</strong></span><span><small>相似图片</small><strong>{report.similar}</strong></span><span><small>无效图片</small><strong>{report.invalid_images}</strong></span><span><small>分析图片</small><strong>{report.images}</strong></span></div>{!compact && <div className="quality-grid"><div><h3>相似性分组</h3>{report.groups.slice(0, 6).map((item, index) => <p key={index}><span>{item.kind === "exact" ? "精确重复" : "相似"} · {item.image_ids.length} 张</span><b>{(item.score * 100).toFixed(0)}%</b></p>)}{!report.groups.length && <p>未发现重复或相似图片。</p>}</div><div><h3>处理建议</h3><p>重复检测为只读报告，不会删除任何图片。</p><p>相似图应由你在标注和 split 前人工决定是否保留。</p></div></div>}</section>; }
 
 
 function ValidationPanel({ report, compact = false }: { report: ValidationReport; compact?: boolean }) {

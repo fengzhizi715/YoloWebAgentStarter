@@ -67,6 +67,26 @@ h1, h2, p { margin: 0; }
 .compact-quality-panel .quality-summary { gap: 6px; }
 .compact-quality-panel .quality-summary span { padding: 6px; }
 .compact-quality-panel .quality-summary strong { font-size: 15px; }
+.dataset-card-report { position: relative; }
+.dataset-card-report-close { position: absolute; z-index: 1; top: 5px; right: 6px; padding: 3px 5px; border: 0; border-radius: 4px; color: #68768d; background: transparent; font-size: 10px; }
+.dataset-card-report-close:hover { color: #3157d5; background: #eef2ff; }
+.data-exchange-backdrop { z-index: 50; background: rgba(16, 24, 40, .52); }
+.data-exchange-dialog { width: min(100%, 640px); gap: 22px; padding: 0; overflow: hidden; }
+.data-exchange-header { padding: 26px 28px 20px; border-bottom: 1px solid #e8edf5; background: linear-gradient(135deg, #fbfcff, #f2f6ff); }
+.data-exchange-header .icon-button { width: 30px; height: 30px; border-radius: 7px; background: #fff; box-shadow: 0 1px 2px rgba(24, 37, 61, .08); }
+.exchange-steps { display: grid; grid-template-columns: auto 1fr auto 1fr auto; align-items: center; gap: 8px; padding: 0 28px; color: #9aa5b5; font-size: 11px; font-weight: 700; }
+.exchange-steps span { white-space: nowrap; }.exchange-steps span.active { color: #3157d5; }.exchange-steps i { height: 1px; background: #dce4f2; }
+.data-exchange-dialog > section:not(.dataset-dialog) { padding-inline: 28px; }
+.exchange-label { display: block; margin-bottom: 8px; color: #536077; font-size: 12px; font-weight: 700; }
+.format-option-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.format-option { display: grid; gap: 5px; min-height: 82px; padding: 14px; border: 1px solid #dce3ef; border-radius: 9px; color: #526078; background: #fff; text-align: left; }
+.format-option strong { color: #334058; font-size: 13px; }.format-option span { color: #8994a8; font-size: 10px; line-height: 1.4; }
+.format-option:hover, .format-option.selected { border-color: #6d88e7; background: #f5f7ff; }.format-option.selected { box-shadow: inset 0 0 0 1px #6d88e7; }
+.exchange-fields { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 12px; padding: 0 28px; }.exchange-fields label { min-width: 0; }
+.exchange-dropzone { display: grid; justify-items: center; gap: 6px; margin: 0 28px; padding: 24px 16px; border: 1px dashed #aebee6; border-radius: 10px; color: #68768d; background: #fafbff; }
+.exchange-dropzone:hover, .exchange-dropzone.dragging { border-color: #3157d5; background: #f2f5ff; }.exchange-dropzone-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 8px; color: #3157d5; background: #e8eeff; font-size: 19px; }.exchange-dropzone strong { color: #435068; font-size: 12px; }.exchange-dropzone small { color: #8994a8; font-size: 10px; }
+.exchange-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 28px; }.exchange-summary span { display: grid; gap: 4px; padding: 10px; border: 1px solid #e2e7f0; border-radius: 8px; color: #8994a8; background: #fbfcff; font-size: 10px; }.exchange-summary strong { color: #3e4d66; font-size: 12px; }
+.data-exchange-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 2px; padding: 16px 28px; border-top: 1px solid #e8edf5; background: #fbfcfe; }.data-exchange-footer > span { color: #8994a8; font-size: 10px; }.data-exchange-footer > div { display: flex; gap: 8px; }
 
 .dataset-detail-page { width: 100%; max-width: 1440px; margin: 0 auto; padding: 26px 36px 54px; }.dataset-breadcrumbs { display: flex; align-items: center; gap: 7px; margin-bottom: 20px; color: #8b96a8; font-size: 13px; }.dataset-breadcrumbs button { padding: 0; border: 0; color: #758197; background: transparent; font-size: inherit; }.dataset-breadcrumbs button:hover { color: #3157d5; }.dataset-breadcrumbs strong { color: #3d4a61; font-weight: 650; }.dataset-detail-page .workspace { min-height: 0; padding: 28px; border: 1px solid #e5e9f0; border-radius: 10px; background: #fff; box-shadow: 0 1px 2px rgba(24, 37, 61, .03); }
 
