@@ -3,11 +3,13 @@ import { api } from "../api/client";
 import type { Dataset, TaskType, TrainingLog, TrainingSummary, TrainingTask } from "../types";
 
 interface Props {
+  datasets: Dataset[];
   dataset: Dataset;
+  onDatasetChange: (dataset: Dataset) => void;
   onBack: () => void;
 }
 
-export function TrainingView({ dataset, onBack }: Props) {
+export function TrainingView({ datasets, dataset, onDatasetChange, onBack }: Props) {
   const defaultModel = defaultModelFor(dataset.task_type);
   const [tasks, setTasks] = useState<TrainingTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<TrainingTask>();
@@ -32,6 +34,13 @@ export function TrainingView({ dataset, onBack }: Props) {
   useEffect(() => {
     refresh().catch((reason) => setError(errorMessage(reason)));
   }, [refresh]);
+
+  useEffect(() => {
+    setModel(defaultModelFor(dataset.task_type));
+    setSelectedTask(undefined);
+    setLogs(undefined);
+    setSummary(undefined);
+  }, [dataset.id, dataset.task_type]);
 
   useEffect(() => {
     const active = selectedTask && (selectedTask.status === "pending" || selectedTask.status === "running");
@@ -78,7 +87,7 @@ export function TrainingView({ dataset, onBack }: Props) {
       <div className="training-head"><button className="button" onClick={onBack}>← 返回数据集</button><div><span className="eyebrow">LOCAL TRAINING / {dataset.task_type}</span><h1>{dataset.name}</h1><p className="muted">复用已保存的 train / val / test split，在本机运行 Ultralytics YOLO。</p></div></div>
       {error && <div className="validation invalid"><strong>训练操作失败</strong><span>{error}</span></div>}
       <div className="training-grid">
-        <section className="panel training-form"><span className="eyebrow">NEW TRAINING TASK</span><h2>训练配置</h2><p className="hint">模型权重族必须和数据集任务匹配；首次运行可能需要下载 Ultralytics 权重。</p><label>任务名称<input value={name} onChange={(event) => setName(event.target.value)} /></label><label>基础权重<input value={model} onChange={(event) => setModel(event.target.value)} /><small>建议使用 {defaultModelFor(dataset.task_type)}</small></label><div className="form-row"><label>Epochs<input type="number" min={1} value={epochs} onChange={(event) => setEpochs(Number(event.target.value))} /></label><label>Batch<input type="number" min={1} value={batchSize} onChange={(event) => setBatchSize(Number(event.target.value))} /></label></div><div className="form-row"><label>Image size<input type="number" min={32} step={32} value={imgSize} onChange={(event) => setImgSize(Number(event.target.value))} /></label><label>Workers<input type="number" min={0} value={workers} onChange={(event) => setWorkers(Number(event.target.value))} /></label></div><label>Device<select value={device} onChange={(event) => setDevice(event.target.value)}><option value="auto">auto</option><option value="cpu">cpu</option><option value="mps">mps</option><option value="0">cuda:0</option></select></label><button className="button primary wide" disabled={busy} onClick={start}>创建并运行训练</button></section>
+        <section className="panel training-form"><span className="eyebrow">NEW TRAINING TASK</span><h2>训练配置</h2><p className="hint">模型权重族必须和数据集任务匹配；首次运行可能需要下载 Ultralytics 权重。</p><label>训练数据集<select value={dataset.id} onChange={(event) => { const next = datasets.find((item) => item.id === event.target.value); if (next) onDatasetChange(next); }}>{datasets.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.task_type} · {item.image_count} 张图片</option>)}</select></label><label>任务名称<input value={name} onChange={(event) => setName(event.target.value)} /></label><label>基础权重<input value={model} onChange={(event) => setModel(event.target.value)} /><small>建议使用 {defaultModelFor(dataset.task_type)}</small></label><div className="form-row"><label>Epochs<input type="number" min={1} value={epochs} onChange={(event) => setEpochs(Number(event.target.value))} /></label><label>Batch<input type="number" min={1} value={batchSize} onChange={(event) => setBatchSize(Number(event.target.value))} /></label></div><div className="form-row"><label>Image size<input type="number" min={32} step={32} value={imgSize} onChange={(event) => setImgSize(Number(event.target.value))} /></label><label>Workers<input type="number" min={0} value={workers} onChange={(event) => setWorkers(Number(event.target.value))} /></label></div><label>Device<select value={device} onChange={(event) => setDevice(event.target.value)}><option value="auto">auto</option><option value="cpu">cpu</option><option value="mps">mps</option><option value="0">cuda:0</option></select></label><button className="button primary wide" disabled={busy} onClick={start}>创建并运行训练</button></section>
         <section className="panel task-panel"><div className="panel-heading"><div><span className="eyebrow">TASK QUEUE</span><h2>训练任务</h2></div><span className="count-badge">{tasks.length}</span></div><div className="task-list">{tasks.map((task) => <button key={task.id} className={selectedTask?.id === task.id ? "task-item selected" : "task-item"} onClick={() => setSelectedTask(task)}><div><strong>{task.name}</strong><small>{task.model_name} · {task.created_at.slice(0, 16).replace("T", " ")}</small></div><span className={`status ${task.status}`}>{statusLabel(task.status)}</span><div className="progress-line"><i style={{ width: `${task.progress_percent}%` }} /></div></button>)}{!tasks.length && <p className="muted">还没有训练任务。</p>}</div></section>
       </div>
       {selectedTask && <section className="panel training-detail">

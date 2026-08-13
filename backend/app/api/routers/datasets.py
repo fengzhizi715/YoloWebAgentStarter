@@ -4,13 +4,14 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session, get_settings, get_storage
 from app.core.config import Settings
 from app.core.errors import NotFoundError, ValidationError
 from app.core.ids import new_id
-from app.core.models import ClassLabel, Dataset, ImageItem
+from app.core.models import Annotation, ClassLabel, Dataset, ImageItem
 from app.core.schemas import (
     AnnotationResponse,
     AutoSplitRequest,
@@ -74,8 +75,32 @@ router = APIRouter(prefix="/datasets", tags=["datasets"])
 file_router = APIRouter(prefix="/images", tags=["images"])
 
 
-def _dataset_response(dataset: Dataset) -> DatasetResponse:
-    return DatasetResponse.model_validate(dataset)
+def _dataset_response(dataset: Dataset, *, annotated_image_count: int = 0) -> DatasetResponse:
+    return DatasetResponse(
+        id=dataset.id,
+        name=dataset.name,
+        description=dataset.description,
+        task_type=dataset.task_type,
+        image_count=dataset.image_count,
+        annotated_image_count=annotated_image_count,
+        class_count=dataset.class_count,
+        created_at=dataset.created_at,
+        updated_at=dataset.updated_at,
+    )
+
+
+def _dataset_responses(session: Session, datasets: list[Dataset]) -> list[DatasetResponse]:
+    if not datasets:
+        return []
+    ids = [dataset.id for dataset in datasets]
+    annotated = dict(
+        session.execute(
+            select(Annotation.dataset_id, func.count(func.distinct(Annotation.image_id)))
+            .where(Annotation.dataset_id.in_(ids))
+            .group_by(Annotation.dataset_id)
+        ).all()
+    )
+    return [_dataset_response(dataset, annotated_image_count=annotated.get(dataset.id, 0)) for dataset in datasets]
 
 
 def _class_response(item: ClassLabel) -> ClassLabelResponse:
@@ -132,7 +157,7 @@ async def import_yolo_archive(
         ),
     )
     return YoloImportResponse(
-        dataset=_dataset_response(dataset),
+        dataset=_dataset_responses(session, [dataset])[0],
         imported_images=imported_images,
         imported_annotations=imported_annotations,
     )
@@ -160,12 +185,12 @@ async def import_coco_archive(
             max_compression_ratio=settings.max_yolo_archive_compression_ratio,
         ),
     )
-    return YoloImportResponse(dataset=_dataset_response(dataset), imported_images=images, imported_annotations=annotations)
+    return YoloImportResponse(dataset=_dataset_responses(session, [dataset])[0], imported_images=images, imported_annotations=annotations)
 
 
 @router.get("", response_model=list[DatasetResponse])
 def get_datasets(session: Session = Depends(get_session)) -> list[DatasetResponse]:
-    return [_dataset_response(item) for item in list_datasets(session)]
+    return _dataset_responses(session, list_datasets(session))
 
 
 @router.post("", response_model=DatasetResponse, status_code=201)
@@ -178,7 +203,7 @@ def get_dataset_detail(dataset_id: str, session: Session = Depends(get_session))
     dataset = get_dataset(session, dataset_id)
     classes = list_classes(session, dataset_id)
     return DatasetDetailResponse(
-        **_dataset_response(dataset).model_dump(),
+        **_dataset_responses(session, [dataset])[0].model_dump(),
         classes=[_class_response(item) for item in classes],
         image_total=dataset.image_count,
     )

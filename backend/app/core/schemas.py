@@ -44,6 +44,7 @@ class DatasetResponse(ORMModel):
     description: str | None
     task_type: TaskType
     image_count: int
+    annotated_image_count: int
     class_count: int
     created_at: datetime
     updated_at: datetime

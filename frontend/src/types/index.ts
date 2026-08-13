@@ -7,6 +7,7 @@ export interface Dataset {
   description: string | null;
   task_type: TaskType;
   image_count: number;
+  annotated_image_count: number;
   class_count: number;
   created_at: string;
   updated_at: string;

@@ -21,6 +21,24 @@ def create_dataset(client, task_type: str = "detect") -> str:
     return response.json()["id"]
 
 
+def test_delete_dataset_removes_record_and_managed_images(client):
+    dataset_id = create_dataset(client)
+    upload = client.post(
+        f"/api/datasets/{dataset_id}/images/upload",
+        files={"files": ("cat.png", png_bytes(), "image/png")},
+    )
+    assert upload.status_code == 201, upload.text
+    dataset_dir = client.app.state.storage.dataset_dir(dataset_id)
+    assert dataset_dir.is_dir()
+
+    deleted = client.delete(f"/api/datasets/{dataset_id}")
+
+    assert deleted.status_code == 204, deleted.text
+    assert client.get(f"/api/datasets/{dataset_id}").status_code == 404
+    assert all(item["id"] != dataset_id for item in client.get("/api/datasets").json())
+    assert not dataset_dir.exists()
+
+
 def test_detect_dataset_annotation_validation_and_yolo_round_trip(client):
     dataset_id = create_dataset(client)
     class_response = client.post(f"/api/datasets/{dataset_id}/classes", json={"name": "cat", "color": "#ff0000"})
@@ -69,6 +87,7 @@ def test_detect_dataset_annotation_validation_and_yolo_round_trip(client):
     assert imported.status_code == 201, imported.text
     assert imported.json()["imported_images"] == 1
     assert imported.json()["imported_annotations"] == 1
+    assert imported.json()["dataset"]["annotated_image_count"] == 1
 
 
 def test_quality_report_and_deterministic_bulk_splits(client):

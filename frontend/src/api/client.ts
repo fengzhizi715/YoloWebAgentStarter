@@ -53,6 +53,7 @@ export const api = {
   listDatasets: () => request<Dataset[]>("/api/datasets"),
   createDataset: (name: string, taskType: TaskType, description?: string) =>
     request<Dataset>("/api/datasets", json({ name, task_type: taskType, description: description || null })),
+  deleteDataset: (datasetId: string) => request<void>(`/api/datasets/${datasetId}`, { method: "DELETE" }),
   listClasses: (datasetId: string) => request<ClassLabel[]>(`/api/datasets/${datasetId}/classes`),
   createClass: (datasetId: string, name: string, color = "#22c55e") =>
     request<ClassLabel>(`/api/datasets/${datasetId}/classes`, json({ name, color })),
