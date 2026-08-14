@@ -20,6 +20,7 @@ from app.training.observability.log_store import TrainingLogStore
 from app.training.observability.summary import write_training_summary
 from app.training.runtime.process_registry import process_registry
 from app.training.runtime.queue import TrainingQueue
+from app.training.runtime.device_service import DeviceService
 from app.training.schemas import (
     TrainingLogResponse,
     TrainingProfileCreate,
@@ -42,6 +43,9 @@ class TrainingService:
 
     def create_task(self, session: Session, payload: TrainingTaskCreate) -> TrainingTaskResponse:
         return self._create_task(session, payload)
+
+    def devices(self) -> list[dict[str, object]]:
+        return [device.as_dict() for device in DeviceService().list_devices()]
 
     def resume_task(self, session: Session, task_id: str, payload: TrainingTaskResumeRequest) -> TrainingTaskResponse:
         previous = self.get_task(session, task_id)
@@ -88,6 +92,7 @@ class TrainingService:
         resume_epoch: bool = False,
         resume_source_task_id: str | None = None,
     ) -> TrainingTaskResponse:
+        payload.device = DeviceService().normalize_selector(payload.device)
         dataset = get_dataset(session, payload.dataset_id)
         task_type = payload.task_type or TaskType(dataset.task_type)
         if task_type.value != dataset.task_type:
@@ -238,7 +243,8 @@ class TrainingService:
             description=payload.description,
             model_name=payload.model,
             task_type=payload.task_type.value,
-            **payload.model_dump(exclude={"dataset_id", "name", "description", "model", "task_type"}),
+            device=DeviceService().normalize_selector(payload.device),
+            **payload.model_dump(exclude={"dataset_id", "name", "description", "model", "task_type", "device"}),
         )
         session.add(profile)
         try:
@@ -260,6 +266,8 @@ class TrainingService:
         if profile is None:
             raise NotFoundError("training_profile_not_found", "Training profile was not found.")
         changes = payload.model_dump(exclude_unset=True)
+        if "device" in changes and changes["device"] is not None:
+            changes["device"] = DeviceService().normalize_selector(changes["device"])
         if "task_type" in changes and changes["task_type"].value != profile.dataset.task_type:
             raise ValidationError("task_type_mismatch", "Training profile type must match the dataset task type.")
         if "model" in changes:

@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+import json
+
+from app.core.errors import ValidationError
+from app.training.config import build_training_command
+from app.training.runtime.device_service import DeviceService, TrainingDevice
+from app.core.task_types import TaskType
+
+
+def test_sam_settings_are_persisted_in_starter_data_dir(client):
+    initial = client.get("/api/settings/sam")
+    assert initial.status_code == 200
+    assert initial.json()["device"] == "auto"
+    assert initial.json()["model_configured"] is False
+
+    updated = client.put(
+        "/api/settings/sam",
+        json={
+            "enabled": True,
+            "model": "sam_b.pt",
+            "device": "cpu",
+            "img_size": 768,
+            "fallback_mode": "disabled",
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["model_configured"] is True
+    assert updated.json()["img_size"] == 768
+
+    reloaded = client.get("/api/settings/sam").json()
+    assert reloaded["model"] == "sam_b.pt"
+    assert reloaded["fallback_mode"] == "disabled"
+    settings_path = client.app.state.settings.data_dir / "settings.json"
+    assert json.loads(settings_path.read_text(encoding="utf-8"))["sam"]["model"] == "sam_b.pt"
+
+
+def test_training_devices_and_multi_gpu_command(monkeypatch, client):
+    devices = client.get("/api/training/devices")
+    assert devices.status_code == 200
+    assert devices.json()["items"][0]["type"] == "cpu"
+
+    gpu_devices = [
+        TrainingDevice(id="cpu", type="cpu", name="CPU", status="available"),
+        TrainingDevice(id="cuda:0", type="cuda", name="GPU 0", index=0, status="available"),
+        TrainingDevice(id="cuda:1", type="cuda", name="GPU 1", index=1, status="available"),
+    ]
+    monkeypatch.setattr(DeviceService, "list_devices", lambda _self: gpu_devices)
+    assert DeviceService().normalize_selector("cuda:0,cuda:1") == "0,1"
+    assert DeviceService().normalize_selector("cuda") == "0"
+    try:
+        DeviceService().normalize_selector("0,0")
+    except ValidationError as exc:
+        assert exc.error_code == "invalid_training_device"
+    else:
+        raise AssertionError("duplicate CUDA ids should be rejected")
+
+    command = build_training_command(
+        task_type=TaskType.DETECT,
+        model="yolo11n.pt",
+        data_yaml="/tmp/data.yaml",
+        run_dir="/tmp/run",
+        epochs=1,
+        img_size=640,
+        batch_size=2,
+        device="0,1",
+        workers=0,
+        seed=42,
+    )
+    assert "device=0,1" in command.args
+
+
+def test_runtime_logs_endpoint_returns_startup_log(client):
+    response = client.get("/api/logs/runtime?lines=20")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["path"].endswith("logs/backend.log")
+    assert any("runtime initialized" in line for line in payload["lines"])
+
+    filtered = client.get("/api/logs/runtime?lines=20&level=INFO")
+    assert filtered.status_code == 200
+    assert all(" INFO " in line for line in filtered.json()["lines"])

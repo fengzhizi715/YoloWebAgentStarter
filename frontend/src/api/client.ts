@@ -16,7 +16,10 @@ import type {
   ModelEvaluationRecord,
   ModelTestRecord,
   SamPrediction,
+  SamSettings,
   SystemInfo,
+  RuntimeLogResponse,
+  TrainingDevice,
   ValidationReport,
 } from "../types";
 
@@ -50,6 +53,8 @@ const json = (body: unknown, method = "POST"): RequestInit => ({
 
 export const api = {
   getSystemInfo: () => request<SystemInfo>("/api/system/info"),
+  getSamSettings: () => request<SamSettings>("/api/settings/sam"),
+  updateSamSettings: (payload: Omit<SamSettings, "model_configured">) => request<SamSettings>("/api/settings/sam", json(payload, "PUT")),
   listDatasets: () => request<Dataset[]>("/api/datasets"),
   createDataset: (name: string, taskType: TaskType, description?: string) =>
     request<Dataset>("/api/datasets", json({ name, task_type: taskType, description: description || null })),
@@ -109,6 +114,7 @@ export const api = {
   importCoco: async (file: File, name: string, taskType: TaskType) => { const form = new FormData(); form.append("file", file); form.append("name", name); form.append("task_type", taskType); return request<{ dataset: Dataset; imported_images: number; imported_annotations: number }>("/api/datasets/import/coco", { method: "POST", body: form }); },
   tileDataset: (datasetId: string, data: { name: string; description?: string; tile_size: number; overlap: number; keep_empty_tiles: boolean }) => request<{ dataset_id: string; source_dataset_id: string; generated_images: number; generated_annotations: number; skipped_empty_tiles: number }>(`/api/datasets/${datasetId}/tile`, json(data)),
   listTrainingTasks: (datasetId: string) => request<{ items: TrainingTask[] }>(`/api/training/tasks?dataset_id=${datasetId}`),
+  listTrainingDevices: () => request<{ items: TrainingDevice[] }>("/api/training/devices"),
   createTrainingTask: (payload: { dataset_id: string; name: string; model: string; task_type: TaskType; epochs: number; img_size: number; batch_size: number; device: string; workers: number; seed: number }) =>
     request<TrainingTask>("/api/training/tasks", json(payload)),
   stopTrainingTask: (taskId: string) => request<TrainingTask>(`/api/training/tasks/${taskId}/stop`, { method: "POST" }),
@@ -132,4 +138,10 @@ export const api = {
   compareModels: (baselineModelId: string, candidateModelId: string) => request<ModelComparison>("/api/models/compare", json({ baseline_model_id: baselineModelId, candidate_model_id: candidateModelId })),
   preannotate: (modelId: string, datasetId: string, imageIds: string[]) => request<{ model_id: string; dataset_id: string; images: Array<{ image_id: string; annotations: unknown[] }> }>(`/api/models/${modelId}/preannotate`, json({ dataset_id: datasetId, image_ids: imageIds })),
   downloadModelUrl: (modelId: string) => apiUrl(`/api/models/${modelId}/download`),
+  runtimeLogs: (options: { lines?: number; level?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (options.lines) query.set("lines", String(options.lines));
+    if (options.level) query.set("level", options.level);
+    return request<RuntimeLogResponse>(`/api/logs/runtime${query.toString() ? `?${query.toString()}` : ""}`);
+  },
 };

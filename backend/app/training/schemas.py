@@ -84,6 +84,20 @@ class TrainingLogResponse(BaseModel):
     line_count: int
 
 
+class TrainingDeviceResponse(BaseModel):
+    id: str
+    type: Literal["cpu", "mps", "cuda"]
+    name: str
+    index: int | None = None
+    memory_total_mb: int | None = None
+    memory_free_mb: int | None = None
+    status: Literal["available", "idle", "busy", "unavailable", "unknown"] = "unknown"
+
+
+class TrainingDeviceListResponse(BaseModel):
+    items: list[TrainingDeviceResponse]
+
+
 class TrainingSummaryResponse(BaseModel):
     task_id: str
     status: TrainingStatus

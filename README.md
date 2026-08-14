@@ -13,6 +13,9 @@
 - 在本机完成 detect、segment、OBB 和 classify 数据集的标注与训练准备。
 - 用持久化的 `train` / `val` / `test` split 贯通校验、YOLO 导出和本地训练。
 - 提供 SAM 的 segment 交互建议；所有建议都必须由用户确认后按普通 polygon 标注保存。
+- 在设置页管理 SAM 模型、推理设备、推理尺寸和无模型时的 review-only 回退策略。
+- 训练页可选择 CPU、MPS、单张 CUDA GPU 或多张 CUDA GPU；本地多 GPU 使用 Ultralytics DDP。
+- 提供本地后端运行日志页，支持尾部行数、级别和内容筛选；语言偏好保存在浏览器本地。
 - 训练结果只以受管的 `best.pt`、`last.pt` 和静态 FP32 ONNX 产物形式进入模型库。
 - 对受管 PT 后台运行上游同款 Ultralytics `val`，保存原生指标、日志、图表和最多 200 个可审阅错误样本。
 - 默认只监听 `127.0.0.1`，数据、数据库、导出和训练文件均保留在本机。
@@ -25,7 +28,8 @@
 | 标注 | detect bbox、segment polygon、OBB 选择/移动/缩放/旋转、单标签 classify |
 | SAM | segment 的框选/点选建议；未配置模型时仅提供明确标识的 review-only 框形建议 |
 | 数据交换 | YOLO detect / segment / OBB ZIP 导入与导出；YOLO classify 目录布局导入与导出；detect/segment COCO ZIP 导入与导出 |
-| 训练 | 本地 FIFO 队列、日志、进度、停止控制、恢复中断任务或从受管 `last.pt` 创建继续训练任务、指标摘要/趋势、配置快照和 best/last checkpoint |
+| 训练 | 本地 FIFO 队列、CPU/MPS/CUDA 单 GPU 或本地多 GPU DDP、日志、进度、停止控制、恢复中断任务或从受管 `last.pt` 创建继续训练任务、指标摘要/趋势、配置快照和 best/last checkpoint |
+| 设置与日志 | SAM 设置、语言设置、本地运行日志查看与筛选 |
 | 评估 | 后台原生 YOLO `val`、持久化 split、任务状态与恢复、日志、混淆矩阵、可用 PR 曲线和最多 200 个错误样本；segment 分别保留 box/mask 指标与曲线 |
 | 模型 | 训练产物的受管 PT 下载、持久化图片快速测试、同数据集模型比较、可审阅预标注、去重 FP32 ONNX 导出 |
 | 数据质量 | 标注覆盖率、类别分布、小目标、重叠 bbox 和类别失衡提示 |
@@ -40,7 +44,7 @@
 | `obb` | 绝对像素的中心、尺寸、角度 | 支持 | 支持 | OBB 指标、图表和 polygon IoU 错误样本 |
 | `classify` | 每张图片一个类别 | 标准 `split/class/image` 目录 | 支持 | top-1 / top-5 指标 |
 
-不包含：登录/RBAC、协作、Agent、Workflow、无人值守批量自动标注、文本提示分割、Deployment、pose、云训练和分布式训练。完整边界见 [Community v2 功能矩阵](phase1_scope.md)。
+不包含：登录/RBAC、协作、Agent、Workflow、无人值守批量自动标注、文本提示分割、Deployment、pose、云训练和远程分布式调度。完整边界见 [Community v2 功能矩阵](phase1_scope.md)。
 
 ## 快速开始
 
@@ -94,7 +98,8 @@ npm --prefix frontend install
 |---|---|---|
 | CPU | `cpu` 或 `auto` | 发布冒烟已覆盖 |
 | Apple Silicon / Metal | `mps` | 支持传递给 Ultralytics；请在目标 Mac 上执行冒烟验证 |
-| NVIDIA CUDA | `0` 或 API 的设备值 | 支持传递给 Ultralytics；需要匹配的 CUDA PyTorch、驱动和硬件 |
+| NVIDIA CUDA 单 GPU | `0`、`cuda:0` 或界面中的单 GPU | 支持传递给 Ultralytics；需要匹配的 CUDA PyTorch、驱动和硬件 |
+| NVIDIA CUDA 多 GPU | `0,1` 或界面中的多 GPU | 使用 `device=0,1` 触发本地 Ultralytics DDP；不提供远程调度 |
 
 本仓库当前的 CI 基线为 CPU。MPS 与 CUDA 的兼容性取决于目标主机的 PyTorch/Ultralytics 组合、驱动和可用硬件。
 
@@ -111,6 +116,9 @@ npm --prefix frontend install
 | `YWA_MAX_YOLO_ARCHIVE_*` | 见示例文件 | YOLO ZIP 的数量、解压大小和压缩比限制 |
 | `YWA_SAM_MODEL` | 未设置 | 启用真实 Ultralytics SAM 框/点提示的本地或命名检查点 |
 | `YWA_SAM_DEVICE` | `auto` | SAM 设备请求，例如 `mps` 或 `cpu` |
+| `YWA_SAM_IMGSZ` | `1024` | SAM 推理尺寸；设置页保存的值优先于环境默认值 |
+
+设置页的 SAM 配置保存在 `YWA_DATA_DIR/settings.json`，语言偏好只保存在浏览器 localStorage；运行日志保存在 `YWA_DATA_DIR/logs/backend.log`。
 
 不可信 YOLO ZIP 在写入前会检查最多 2,000 个成员、单成员 100 MiB、总解压量 250 MiB 和 100:1 压缩比；图片逐成员流式写入受管目录。目录扫描会拒绝导入根目录外路径和逃逸的软链接。
 

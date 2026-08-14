@@ -24,8 +24,8 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 基础校验 | included | 训练前必须验证标注、类别和坐标合法性 |
 | 基础质量报告 | included | 覆盖率、类别分布、小目标、重叠 bbox 和类别失衡；不生成派生数据集 |
 | 高级数据准备 | bounded | 视频抽帧、只读重复/相似图、detect/segment 派生切片；无后台工作流和批量清理 |
-| 训练方式 | 本地 Ultralytics | 不提供云训练和分布式调度 |
-| 训练设备 | CPU 必测；CUDA / MPS best-effort | CI 以 CPU 为基线，硬件能力按本机可用性启用 |
+| 训练方式 | 本地 Ultralytics | 不提供云训练和远程分布式调度 |
+| 训练设备 | CPU 必测；CUDA 单 GPU / 本地多 GPU DDP 与 MPS best-effort | CI 以 CPU 为基线，硬件能力按本机可用性启用 |
 | 模型来源 | Starter 训练产物 | 首版不提供任意外部 PT 导入中心 |
 | PT 能力 | best.pt / last.pt 管理与下载 | PT 不需要格式转换 |
 | ONNX | FP32 导出 | 排除 FP16、INT8、TensorRT、OpenVINO |
@@ -50,6 +50,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | OBB / classify | included | included | Starter API、UI、schema、YOLO 交换与训练闭环可用 |
 | pose | excluded | included | 不在 Community v2 范围 |
 | SAM 交互建议 | included | included | 仅 segment 框/点提示，多边形须人工确认保存；不含批量自动标注 |
+| SAM 设置 | included | included | 本地设置页管理启用状态、模型、设备、推理尺寸和无模型回退行为 |
 | 基础数据集校验 | included | included | 坐标、类别、空标注、格式问题可返回 |
 | 高级质量报告 | included | included | 覆盖率、类别分布、小目标、重复 bbox、重复/相似图片；不含 Agent 诊断 |
 | split 持久化 | included | included | 导出和训练复用已有 split |
@@ -65,6 +66,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 训练默认值与预览 | included | included | 输出解析后的最终配置和风险提示 |
 | 本地训练任务创建 | included | included | detect / segment / OBB / classify 权重族匹配 |
 | 单机任务队列 | included | included | 同时只运行允许数量的任务 |
+| 本地多 GPU 训练 | included | included | 选择两张或以上 CUDA GPU，按 `device=0,1` 交给 Ultralytics DDP；不含远程调度 |
 | 任务状态、日志、摘要 | included | included | 前端可持续查看 |
 | 停止训练 | included | included | 进程和状态可收敛 |
 | pause / unpause | excluded | included | Starter 不依赖平台信号语义 |
@@ -72,7 +74,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 失败恢复 / checkpoint 续跑 | included | included | 从 Starter 受管 `last.pt` 创建新任务；不接受任意外部 checkpoint |
 | 独立 Evaluation | included | included | 对保存 split 同步运行本地评估并持久化错误样本；不含后台任务或 Workflow |
 | Workflow / Agent | excluded | included | 不触发商业自动化闭环 |
-| 云训练 / 分布式训练 | excluded | excluded/future | 不在 Starter 范围 |
+| 云训练 / 远程分布式调度 | excluded | excluded/future | 本地多 GPU DDP 已纳入，但不提供云端 worker 或远程调度 |
 
 ### 3.3 模型管理与导出
 
@@ -98,7 +100,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 登录 / RBAC / 用户管理 | excluded | included | Starter 无 AuthProvider 和用户表 |
 | 商业 License | excluded | included | Starter 无 offline_license 依赖 |
 | LLM / Agent / Workflow | excluded | included | Starter 无配置、路由和页面 |
-| Runtime logs 管理页 | excluded | included | 仅保留标准进程日志 |
+| Runtime logs 管理页 | included | included | 读取 Starter 数据目录中的本地后端日志，支持行数、级别和内容筛选 |
 | SQLite | included | included | Starter 唯一正式数据库 |
 | MySQL | excluded | included | Starter 不迁移 PyMySQL 和迁移指南 |
 | i18n | included | included | 只保留 Starter 使用的中英文消息 |
@@ -115,7 +117,8 @@ Community v2 必须在全新环境中完成：
 5. 查看任务状态、日志和训练摘要。
 6. 获得并管理 best.pt / last.pt。
 7. 下载 PT，并从 PT 导出和下载 ONNX FP32。
-8. 全流程不读取 Enterprise 数据库、虚拟环境或文件目录。
+8. 在 segment 数据集上配置 SAM（可选）并确认交互式建议后保存 polygon 标注。
+9. 全流程不读取 Enterprise 数据库、虚拟环境或文件目录。
 
 ## 5. 变更规则
 

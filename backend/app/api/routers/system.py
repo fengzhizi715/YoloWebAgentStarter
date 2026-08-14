@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_settings
 from app.core.config import Settings
+from app.settings.service import SamSettingsService
+from app.training.runtime.device_service import DeviceService
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -13,7 +15,7 @@ def health() -> dict[str, str]:
 
 @router.get("/info")
 def info(settings: Settings = Depends(get_settings)) -> dict[str, object]:
-    sam_configured = bool(settings.sam_model)
+    sam = SamSettingsService(settings).get()
     return {
         "name": "YoloWebAgentStarter",
         "edition": "community",
@@ -23,9 +25,10 @@ def info(settings: Settings = Depends(get_settings)) -> dict[str, object]:
         "import_root": str(settings.import_root),
         "auth_enabled": False,
         "sam": {
-            "model_configured": sam_configured,
-            "box_prompt_available": True,
-            "point_prompt_available": sam_configured,
-            "box_backend": "ultralytics_sam" if sam_configured else "box_stub",
+            "model_configured": sam.model_configured,
+            "box_prompt_available": sam.enabled,
+            "point_prompt_available": sam.enabled and sam.model_configured,
+            "box_backend": "ultralytics_sam" if sam.model_configured else "box_stub",
         },
+        "training_devices": [device.as_dict() for device in DeviceService().list_devices()],
     }

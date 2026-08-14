@@ -4,9 +4,12 @@ import { api, apiUrl } from "./api/client";
 import { StarterShell, type StarterSection } from "./components/StarterShell";
 import { TrainingView } from "./pages/TrainingView";
 import { ModelsView } from "./pages/ModelsView";
+import { SettingsView } from "./pages/SettingsView";
+import { LogsView } from "./pages/LogsView";
+import { readLocale, saveLocale, type AppLocale } from "./locale";
 import type { Annotation, BBox, ClassLabel, Dataset, DatasetQualityReport, DuplicateReport, ImageItem, SamCapabilities, SamPrediction, TaskType, ValidationReport } from "./types";
 
-type View = "workspace" | "annotation" | "training" | "models";
+type View = "workspace" | "annotation" | "training" | "models" | "settings-sam" | "settings-language" | "logs";
 type CardReportKind = "validation" | "quality" | "duplicates";
 const ANNOTATION_IMAGE_PAGE_SIZE = 20;
 
@@ -24,6 +27,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [samCapabilities, setSamCapabilities] = useState<SamCapabilities>();
+  const [locale, setLocale] = useState<AppLocale>(() => readLocale());
 
   const refreshDatasets = async () => {
     const result = await api.listDatasets();
@@ -44,6 +48,10 @@ export default function App() {
     setImages(nextImages.items);
     setActiveClassId((current) => current || nextClasses[0]?.id || "");
   };
+
+  useEffect(() => {
+    saveLocale(locale);
+  }, [locale]);
 
   useEffect(() => {
     refreshDatasets().catch((reason: unknown) => setError(errorMessage(reason)));
@@ -107,7 +115,8 @@ export default function App() {
       void loadDataset(datasets[0], "training");
       return;
     }
-    if (section !== "workspace" && !selected) {
+    const globalSection = section === "settings-sam" || section === "settings-language" || section === "logs";
+    if (!globalSection && section !== "workspace" && !selected) {
       setNotice("请先创建或选择一个数据集。");
       return;
     }
@@ -115,7 +124,7 @@ export default function App() {
   };
 
   return (
-    <StarterShell active={activeSection} datasetName={selected?.name} onNavigate={navigate}>
+    <StarterShell active={activeSection} datasetName={selected?.name} onNavigate={navigate} locale={locale}>
       {error && <div className="toast error">{error}</div>}
       {notice && <div className="toast success">{notice}</div>}
       {view === "annotation" && displayedDataset && selectedImage ? (
@@ -156,6 +165,12 @@ export default function App() {
         <TrainingView datasets={datasets} dataset={displayedDataset} onDatasetChange={(dataset) => void loadDataset(dataset, "training")} onBack={() => setView("workspace")} />
       ) : view === "models" && displayedDataset ? (
         <ModelsView dataset={displayedDataset} onBack={() => setView("workspace")} onOpenPreannotated={(image, drafts) => { setSelectedImage(image); setAnnotations([]); setProposalDrafts(drafts as AnnotationDraft[]); setView("annotation"); }} />
+      ) : view === "settings-sam" ? (
+        <SettingsView tab="sam" locale={locale} onLocaleChange={setLocale} onSamSettingsChange={() => { api.getSystemInfo().then((info) => setSamCapabilities(info.sam)).catch(() => undefined); }} />
+      ) : view === "settings-language" ? (
+        <SettingsView tab="language" locale={locale} onLocaleChange={setLocale} />
+      ) : view === "logs" ? (
+        <LogsView locale={locale} />
       ) : (
         <DatasetHome
           datasets={datasets}

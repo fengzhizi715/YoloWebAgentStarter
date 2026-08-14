@@ -79,10 +79,37 @@ export interface SamPrediction {
 }
 
 export interface SamCapabilities {
+  enabled?: boolean;
   model_configured: boolean;
   box_prompt_available: boolean;
   point_prompt_available: boolean;
   box_backend: "ultralytics_sam" | "box_stub";
+  device?: string;
+}
+
+export interface SamSettings {
+  enabled: boolean;
+  model: string;
+  device: string;
+  img_size: number;
+  fallback_mode: "box" | "disabled";
+  model_configured: boolean;
+}
+
+export interface TrainingDevice {
+  id: string;
+  type: "cpu" | "mps" | "cuda";
+  name: string;
+  index: number | null;
+  memory_total_mb: number | null;
+  memory_free_mb: number | null;
+  status: "available" | "idle" | "busy" | "unavailable" | "unknown";
+}
+
+export interface RuntimeLogResponse {
+  path: string;
+  level: string | null;
+  lines: string[];
 }
 
 export interface SystemInfo {
@@ -94,6 +121,7 @@ export interface SystemInfo {
   import_root: string;
   auth_enabled: boolean;
   sam: SamCapabilities;
+  training_devices?: TrainingDevice[];
 }
 
 export interface ValidationIssue {

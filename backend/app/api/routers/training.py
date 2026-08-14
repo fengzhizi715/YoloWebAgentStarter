@@ -15,11 +15,17 @@ from app.training.schemas import (
     TrainingTaskList,
     TrainingTaskResponse,
     TrainingTaskResumeRequest,
+    TrainingDeviceListResponse,
 )
 from app.training.service import TrainingService
 
 
 router = APIRouter(prefix="/training", tags=["training"])
+
+
+@router.get("/devices", response_model=TrainingDeviceListResponse)
+def list_devices(service: TrainingService = Depends(get_training_service)) -> TrainingDeviceListResponse:
+    return TrainingDeviceListResponse(items=service.devices())
 
 
 @router.get("/profiles", response_model=list[TrainingProfileResponse])

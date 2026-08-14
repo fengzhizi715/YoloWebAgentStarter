@@ -15,10 +15,11 @@ from app.core.storage import Storage
 from app.dataset.annotation.geometry import validate_bbox, validate_polygon
 from app.dataset.images import get_image
 from app.sam.schemas import SamPredictRequest, SamPredictResponse
+from app.settings.service import SamSettingsService
 
 
 _MODEL_LOCK = threading.Lock()
-_MODELS: dict[str, object] = {}
+_MODELS: dict[tuple[str, str, int], object] = {}
 
 
 def _box_polygon(box: BBox) -> list[tuple[float, float]]:
@@ -30,9 +31,10 @@ def _box_polygon(box: BBox) -> list[tuple[float, float]]:
     ]
 
 
-def _model_for(model_reference: str) -> object:
+def _model_for(model_reference: str, device: str, img_size: int) -> object:
+    key = (model_reference, device, img_size)
     with _MODEL_LOCK:
-        model = _MODELS.get(model_reference)
+        model = _MODELS.get(key)
         if model is not None:
             return model
         try:
@@ -41,20 +43,29 @@ def _model_for(model_reference: str) -> object:
             model = SAM(model_reference)
         except Exception as exc:
             raise ValidationError("sam_model_unavailable", f"SAM model could not be loaded: {exc}") from exc
-        _MODELS[model_reference] = model
+        _MODELS[key] = model
         return model
 
 
 def _predict_with_sam(
     image_path: Path,
     request: SamPredictRequest,
-    settings: Settings,
+    model_reference: str,
+    device: str,
+    img_size: int,
 ) -> tuple[list[tuple[float, float]], float, str | None]:
-    assert settings.sam_model is not None
-    model = _model_for(settings.sam_model)
-    kwargs: dict[str, object] = {"source": str(image_path), "imgsz": settings.sam_img_size, "verbose": False}
-    if settings.sam_device != "auto":
-        kwargs["device"] = settings.sam_device
+    try:
+        model = _model_for(model_reference, device, img_size)
+    except TypeError as exc:
+        # Keep the small helper easy to replace in tests and by local plugins
+        # that still implement the original one-argument hook.
+        try:
+            model = _model_for(model_reference)  # type: ignore[call-arg]
+        except TypeError:
+            raise exc
+    kwargs: dict[str, object] = {"source": str(image_path), "imgsz": img_size, "verbose": False}
+    if device != "auto":
+        kwargs["device"] = device
     if request.box is not None:
         kwargs["bboxes"] = [[request.box.x, request.box.y, request.box.x + request.box.width, request.box.y + request.box.height]]
     if request.points:
@@ -119,15 +130,18 @@ class SamService:
         if not path.is_file():
             raise ValidationError("image_file_missing", "The managed image file is missing.")
 
-        if self.settings.sam_model:
-            polygon, score, device = _predict_with_sam(path, request, self.settings)
+        sam = SamSettingsService(self.settings).get()
+        if not sam.enabled:
+            raise ValidationError("sam_disabled", "SAM 辅助标注已在设置中关闭。")
+        if sam.model:
+            polygon, score, device = _predict_with_sam(path, request, sam.model, sam.device, sam.img_size)
             backend_used = "ultralytics_sam"
-        elif request.box is not None:
+        elif request.box is not None and sam.fallback_mode == "box":
             polygon, score, device, backend_used = _box_polygon(request.box), 1.0, None, "box_stub"
         else:
             raise ValidationError(
                 "sam_model_not_configured",
-                "Point prompts require YWA_SAM_MODEL to reference a local or Ultralytics SAM checkpoint.",
+                "点提示需要在设置中配置本地或 Ultralytics SAM 权重。",
             )
         validate_polygon(polygon, image.width, image.height)
         return SamPredictResponse(

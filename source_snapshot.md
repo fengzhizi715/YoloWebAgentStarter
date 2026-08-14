@@ -67,8 +67,10 @@ git -C /path/to/yolowebagent-source show 701f6e5a63b73f39e35f48fb6de7d2414401875
 - `backend/app/dataset/exchange/yolo/dataset_file_writer.py`、`label_writer.py` 的 OBB 八点 YOLO 标签与 classify 目录布局；
 - `backend/app/sam/schemas.py`、`backend/app/sam/backends/box_stub.py`、`backend/app/sam/ultralytics_backend.py` 的框/点提示、建议多边形和延迟加载模型边界。
 - `backend/app/evaluation/service.py`、`runner.py`、`artifacts.py`、`error_samples.py` 与前端评估详情面板的本地 `yolo val`、受管产物、日志和错误样本契约；Starter 仅保留 detect、segment、OBB、classify 范围。
+- `backend/app/training/runtime/device_service.py` 的本地设备发现、CUDA 选择和多 GPU `device=0,1` 契约；Starter 将其重建为本地单机服务，不引入上游资源调度器。
+- `backend/app/settings/service.py`、`schemas.py` 与 `logs/service.py` 的可见工作流契约；Starter 只提供独立的本地 SAM 设置、语言偏好和后端运行日志边界。
 
-Starter 对这些能力保留独立的 SQLite schema、存储边界、路由和前端实现；不复制 Enterprise 的设置/Profile、Vision Provider、Agent、自动标注、文本分割或 deployment 模块，也不在运行时读取源仓库。
+Starter 对这些能力保留独立的 SQLite schema、存储边界、路由和前端实现；不复制 Enterprise 的设置/Profile 引擎、Vision Provider、Agent、自动标注、文本分割或 deployment 模块，也不在运行时读取源仓库。SAM 设置和运行日志属于 Starter 的最小本地边界，不依赖 Enterprise 设置/Profile 运行时。
 
 ## 6. 快照验证命令
 
