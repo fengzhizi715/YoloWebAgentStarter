@@ -44,7 +44,7 @@ afterEach(() => { act(() => root?.unmount()); container?.remove(); });
 describe("TrainingView dataset selection", () => {
   it("allows selecting the dataset used for a new training task", async () => {
     const onDatasetChange = vi.fn();
-    await act(async () => { root?.render(<TrainingView datasets={[detect, segment]} dataset={detect} onDatasetChange={onDatasetChange} onBack={vi.fn()} />); });
+    await act(async () => { root?.render(<TrainingView datasets={[detect, segment]} dataset={detect} onDatasetChange={onDatasetChange} />); });
     const select = Array.from(container?.querySelectorAll<HTMLSelectElement>("select") ?? []).find((item) => item.value === detect.id);
     expect(select).toBeDefined();
     await act(async () => { if (select) { select.value = segment.id; select.dispatchEvent(new Event("change", { bubbles: true })); } });
@@ -52,7 +52,7 @@ describe("TrainingView dataset selection", () => {
   });
 
   it("renders upstream-style workspace sections", async () => {
-    await act(async () => { root?.render(<TrainingView datasets={[detect]} dataset={detect} onDatasetChange={vi.fn()} onBack={vi.fn()} />); });
+    await act(async () => { root?.render(<TrainingView datasets={[detect]} dataset={detect} onDatasetChange={vi.fn()} />); });
     expect(container?.querySelector("#training-config-anchor")).toBeTruthy();
     expect(container?.querySelector("#experiment-history")).toBeTruthy();
     expect(container?.querySelector(".training-dataset-rail")).toBeTruthy();

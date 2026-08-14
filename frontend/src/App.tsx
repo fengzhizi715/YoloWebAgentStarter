@@ -157,9 +157,9 @@ export default function App() {
           samCapabilities={samCapabilities}
         />
       ) : view === "training" && displayedDataset ? (
-        <TrainingView datasets={datasets} dataset={displayedDataset} onDatasetChange={(dataset) => void loadDataset(dataset, "training")} onBack={() => setView("workspace")} onOpenModels={() => setView("models")} />
+        <TrainingView datasets={datasets} dataset={displayedDataset} onDatasetChange={(dataset) => void loadDataset(dataset, "training")} onOpenModels={() => setView("models")} />
       ) : view === "models" && displayedDataset ? (
-        <ModelsView dataset={displayedDataset} onBack={() => setView("workspace")} />
+        <ModelsView dataset={displayedDataset} />
       ) : view === "settings-sam" ? (
         <SettingsView tab="sam" locale={locale} onLocaleChange={setLocale} onTabChange={(tab) => setView(tab === "sam" ? "settings-sam" : "settings-language")} onSamSettingsChange={() => { api.getSystemInfo().then((info) => setSamCapabilities(info.sam)).catch(() => undefined); }} />
       ) : view === "settings-language" ? (

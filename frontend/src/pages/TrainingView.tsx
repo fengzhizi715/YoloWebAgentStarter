@@ -25,13 +25,12 @@ interface Props {
   datasets: Dataset[];
   dataset: Dataset;
   onDatasetChange: (dataset: Dataset) => void;
-  onBack: () => void;
   onOpenModels?: () => void;
 }
 
 const DRAFT_KEY = "ywa.training.draft";
 
-export function TrainingView({ datasets, dataset, onDatasetChange, onBack, onOpenModels }: Props) {
+export function TrainingView({ datasets, dataset, onDatasetChange, onOpenModels }: Props) {
   const [tasks, setTasks] = useState<TrainingTask[]>([]);
   const [detailTaskId, setDetailTaskId] = useState<string>();
   const [logs, setLogs] = useState<TrainingLog>();
@@ -272,9 +271,6 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onBack, onOpe
     <main className="training-layout training-workspace-page">
       <header className="training-page-header">
         <div className="training-page-header-main">
-          <button className="button training-back-btn" onClick={onBack}>
-            ← 返回数据集
-          </button>
           <div>
             <span className="eyebrow">LOCAL TRAINING / {dataset.task_type.toUpperCase()}</span>
             <h1>训练工作区</h1>

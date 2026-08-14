@@ -1,98 +1,341 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import type { Dataset, ModelComparison, ModelEvaluationRecord, ModelTestRecord, ModelVersion, SplitName } from "../types";
+import type { Dataset, ModelComparison, ModelEvaluationRecord, ModelVersion, SplitName } from "../types";
 import { ModelTestModal } from "../components/ModelTestModal";
-import { ModelEvaluationPanel } from "../components/ModelEvaluationPanel";
+import { ModelComparisonBar } from "../components/model-list/ModelComparisonBar";
+import { ModelLibraryCard } from "../components/model-list/ModelLibraryCard";
+import { ModelLibraryHero } from "../components/model-list/ModelLibraryHero";
+import { ModelLibraryStats } from "../components/model-list/ModelLibraryStats";
+import { ModelDetailView } from "../components/model-detail/ModelDetailView";
+import { formatDelta, filterModels, formatMetric, newerFirst, pickBestModel, sortModels, type ModelListFilter, type ModelListSort } from "../models/helpers";
+import { taskTypeLabel } from "../training/helpers";
+import { IconSearch } from "../components/training/icons";
 
 interface Props {
   dataset: Dataset;
-  onBack: () => void;
 }
 
-export function ModelsView({ dataset, onBack }: Props) {
+export function ModelsView({ dataset }: Props) {
   const [models, setModels] = useState<ModelVersion[]>([]);
-  const [selected, setSelected] = useState<ModelVersion>();
-  const [name, setName] = useState("");
-  const [version, setVersion] = useState("");
-  const [notes, setNotes] = useState("");
+  const [detailId, setDetailId] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [compareBusy, setCompareBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [testing, setTesting] = useState<ModelVersion>();
-  const [compareWith, setCompareWith] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [comparison, setComparison] = useState<ModelComparison>();
-  const [testRecords, setTestRecords] = useState<ModelTestRecord[]>([]);
   const [evaluations, setEvaluations] = useState<ModelEvaluationRecord[]>([]);
+  const [includeArchived, setIncludeArchived] = useState(true);
+  const [search, setSearch] = useState("");
+  const [listFilter, setListFilter] = useState<ModelListFilter>("all");
+  const [listSort, setListSort] = useState<ModelListSort>("newest");
 
   const refresh = useCallback(async () => {
-    const result = await api.listModels(dataset.id);
-    setModels(result.items);
-    setSelected((current) => result.items.find((item) => item.id === current?.id) ?? result.items[0]);
-  }, [dataset.id]);
+    const result = await api.listModels(dataset.id, includeArchived);
+    const items = [...result.items].sort(newerFirst);
+    setModels(items);
+    setDetailId((current) => (current && items.some((item) => item.id === current) ? current : undefined));
+    setSelectedIds((ids) => ids.filter((id) => items.some((item) => item.id === id)));
+  }, [dataset.id, includeArchived]);
 
   useEffect(() => {
     refresh().catch((reason) => setError(errorMessage(reason)));
   }, [refresh]);
 
-  useEffect(() => {
-    setName(selected?.name ?? "");
-    setVersion(selected?.version ?? "");
-    setNotes(selected?.notes ?? "");
-  }, [selected]);
+  const detailModel = useMemo(() => models.find((item) => item.id === detailId), [models, detailId]);
+  const bestModel = useMemo(() => pickBestModel(models.filter((item) => item.status === "active")), [models]);
+  const filteredModels = useMemo(
+    () => sortModels(filterModels(models, listFilter, search), listSort),
+    [models, listFilter, search, listSort],
+  );
+  const filterCounts = useMemo(() => ({
+    all: models.length,
+    pt: models.filter((item) => item.format === "pt").length,
+    onnx: models.filter((item) => item.format === "onnx").length,
+    best: models.filter((item) => item.artifact_type === "best").length,
+    archived: models.filter((item) => item.status === "archived").length,
+  }), [models]);
 
   useEffect(() => {
-    if (!selected) { setTestRecords([]); setEvaluations([]); return; }
-    api.listModelTests(selected.id).then(setTestRecords).catch((reason) => setError(errorMessage(reason)));
-    api.listModelEvaluations(selected.id).then(setEvaluations).catch((reason) => setError(errorMessage(reason)));
-  }, [selected?.id]);
+    if (!detailModel || detailModel.format !== "pt") { setEvaluations([]); return; }
+    api.listModelEvaluations(detailModel.id).then(setEvaluations).catch((reason) => setError(errorMessage(reason)));
+  }, [detailModel?.id, detailModel?.format]);
 
   useEffect(() => {
-    if (!selected || !evaluations.some((item) => item.status === "pending" || item.status === "running")) return;
-    const timer = window.setInterval(() => api.listModelEvaluations(selected.id).then(setEvaluations).catch((reason) => setError(errorMessage(reason))), 1500);
+    if (!detailModel || !evaluations.some((item) => item.status === "pending" || item.status === "running")) return;
+    const timer = window.setInterval(() => {
+      api.listModelEvaluations(detailModel.id).then(setEvaluations).catch((reason) => setError(errorMessage(reason)));
+    }, 1500);
     return () => window.clearInterval(timer);
-  }, [evaluations, selected?.id]);
+  }, [evaluations, detailModel?.id]);
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
     setError("");
+    setNotice("");
     try { await action(); } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
 
-  const save = () => selected && run(async () => {
-    const updated = await api.updateModel(selected.id, { name: name.trim(), version: version.trim(), notes });
-    setSelected(updated);
+  const exportOnnx = (model: ModelVersion) => run(async () => {
+    const exported = await api.exportModelOnnx(model.id);
     await refresh();
+    setDetailId(exported.id);
+    setNotice(`已导出 ONNX：${exported.name}`);
   });
 
-  const exportOnnx = () => selected && run(async () => {
-    const exported = await api.exportModelOnnx(selected.id);
+  const toggleArchive = (model: ModelVersion) => run(async () => {
+    const updated = model.status === "archived" ? await api.restoreModel(model.id) : await api.archiveModel(model.id);
     await refresh();
-    setSelected(exported);
+    setDetailId(updated.id);
   });
 
-  const toggleArchive = () => selected && run(async () => {
-    const updated = selected.status === "archived" ? await api.restoreModel(selected.id) : await api.archiveModel(selected.id);
-    setSelected(updated);
-    await refresh();
+  const remove = (model: ModelVersion) => {
+    if (!window.confirm(`删除模型 ${model.name}？`)) return;
+    void run(async () => {
+      await api.deleteModel(model.id);
+      if (detailId === model.id) setDetailId(undefined);
+      await refresh();
+    });
+  };
+
+  const removeSelected = () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`删除选中的 ${selectedIds.length} 个模型？`)) return;
+    void run(async () => {
+      for (const id of selectedIds) await api.deleteModel(id);
+      setSelectedIds([]);
+      setComparison(undefined);
+      if (detailId && selectedIds.includes(detailId)) setDetailId(undefined);
+      await refresh();
+    });
+  };
+
+  const compareSelected = async () => {
+    if (selectedIds.length !== 2) return;
+    setCompareBusy(true);
+    setError("");
+    try {
+      setComparison(await api.compareModels(selectedIds[0], selectedIds[1]));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setCompareBusy(false);
+    }
+  };
+
+  const compareWithBest = async () => {
+    if (!bestModel || !selectedIds.length) return;
+    const candidate = selectedIds.find((id) => id !== bestModel.id) ?? selectedIds[0];
+    if (candidate === bestModel.id) {
+      setError("请选择与最佳模型不同的候选模型。");
+      return;
+    }
+    setCompareBusy(true);
+    setError("");
+    try {
+      setComparison(await api.compareModels(bestModel.id, candidate));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setCompareBusy(false);
+    }
+  };
+
+  const evaluate = (split: SplitName) => detailModel && run(async () => {
+    const record = await api.evaluateModel(detailModel.id, split);
+    setEvaluations((items) => [record, ...items]);
   });
 
-  const remove = () => selected && window.confirm(`删除模型 ${selected.name}？`) && run(async () => {
-    await api.deleteModel(selected.id);
-    await refresh();
-  });
-  const compare = () => selected && compareWith && run(async () => setComparison(await api.compareModels(selected.id, compareWith)));
-  const evaluate = (split: SplitName) => selected && run(async () => { const record = await api.evaluateModel(selected.id, split); setEvaluations((items) => [record, ...items]); });
+  if (detailModel) {
+    return (
+      <main className="models-layout models-workspace-page">
+        {error && <div className="validation invalid"><strong>模型操作失败</strong><span>{error}</span></div>}
+        {notice && <p className="training-workspace-notice">{notice}</p>}
+        <ModelDetailView
+          dataset={dataset}
+          model={detailModel}
+          models={models}
+          evaluations={evaluations}
+          busy={busy}
+          onBack={() => setDetailId(undefined)}
+          onSelectModel={(model) => setDetailId(model.id)}
+          onTest={setTesting}
+          onExportOnnx={() => void exportOnnx(detailModel)}
+          onToggleArchive={() => void toggleArchive(detailModel)}
+          onDelete={() => remove(detailModel)}
+          onEvaluate={evaluate}
+          onSaved={async (updated) => {
+            setDetailId(updated.id);
+            await refresh();
+            setNotice("元数据已保存");
+          }}
+        />
+        {testing && <ModelTestModal model={testing} onClose={() => setTesting(undefined)} />}
+      </main>
+    );
+  }
 
   return (
-    <main className="models-layout">
-      <div className="models-head"><button className="button" onClick={onBack}>← 返回数据集</button><div><span className="eyebrow">MODEL REGISTRY / {dataset.task_type}</span><h1>{dataset.name}</h1><p className="muted">管理训练产生的 PT，并从 PT 生成 ONNX FP32。</p></div></div>
+    <main className="models-layout models-workspace-page">
+      <header className="models-page-header">
+        <div className="models-page-header-main">
+          <div>
+            <span className="eyebrow">MODEL REGISTRY / {dataset.task_type.toUpperCase()}</span>
+            <h1>模型库</h1>
+            <p className="muted">管理受管训练产物，支持快速测试、split 评估与 FP32 ONNX 导出。</p>
+          </div>
+        </div>
+        <div className="models-page-header-meta">
+          <span className="models-chip"><strong>{dataset.name}</strong></span>
+          <span className="models-chip">{taskTypeLabel(dataset.task_type)}</span>
+          <span className="models-chip models-chip--accent">{models.length} 个模型</span>
+        </div>
+      </header>
+
       {error && <div className="validation invalid"><strong>模型操作失败</strong><span>{error}</span></div>}
-      <div className="models-grid">
-        <section className="panel model-list-panel"><div className="panel-heading"><div><span className="eyebrow">MODEL VERSIONS</span><h2>模型列表</h2></div><span className="count-badge">{models.length}</span></div><div className="model-list">{models.map((model) => <button key={model.id} className={selected?.id === model.id ? "model-item selected" : "model-item"} onClick={() => setSelected(model)}><div><strong>{model.name}</strong><small>{model.format.toUpperCase()} · {model.artifact_type} · {model.version}</small></div><span className={`status ${model.status}`}>{model.status === "active" ? "启用" : "已归档"}</span></button>)}{!models.length && <div className="empty-state"><strong>暂无模型</strong><span>完成训练后，best.pt 和 last.pt 会自动进入模型列表。</span></div>}</div></section>
-      {selected ? <section className="panel model-detail-panel"><div className="detail-head"><div><span className="eyebrow">MODEL DETAIL</span><h2>{selected.name}</h2><p className="muted">{selected.format.toUpperCase()} · {selected.task_type} · {selected.source}</p></div><span className={`status ${selected.status}`}>{selected.status === "active" ? "启用" : "已归档"}</span></div><div className="model-actions"><a className="button" href={api.downloadModelUrl(selected.id)}>下载 {selected.format.toUpperCase()}</a>{selected.format === "pt" && <><button className="button primary" disabled={busy} onClick={() => setTesting(selected)}>快速测试</button><button className="button" disabled={busy} onClick={exportOnnx}>导出 ONNX FP32</button></>}<button className="button" disabled={busy} onClick={toggleArchive}>{selected.status === "active" ? "归档" : "恢复"}</button><button className="button danger" disabled={busy} onClick={remove}>删除</button></div>{selected.format === "pt" && <div className="model-tools"><div><span className="eyebrow">MODEL COMPARISON</span><h3>与同数据集模型对比</h3><select value={compareWith} onChange={(event) => setCompareWith(event.target.value)}><option value="">选择候选模型</option>{models.filter((item) => item.id !== selected.id && item.task_type === selected.task_type).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="button" disabled={busy || !compareWith} onClick={compare}>比较指标</button>{comparison && <div className="comparison"><strong>{comparison.candidate.name} vs {comparison.baseline.name}</strong>{Object.entries(comparison.deltas).map(([key, value]) => <span key={key}>{key}: {value == null ? "—" : value.toFixed(3)}</span>)}<small>{comparison.suggestions[0]}</small></div>}</div><ModelEvaluationPanel model={selected} evaluations={evaluations} busy={busy} onEvaluate={evaluate} /></div>}<div className="model-form"><label>名称<input value={name} onChange={(event) => setName(event.target.value)} /></label><label>版本<input value={version} onChange={(event) => setVersion(event.target.value)} /></label><label>备注<textarea value={notes} onChange={(event) => setNotes(event.target.value)} /></label><button className="button" disabled={busy || !name.trim() || !version.trim()} onClick={save}>保存元数据</button></div><div className="model-meta"><span>文件：{selected.model_path}</span><span>基础模型：{selected.base_model || "—"}</span><span>mAP50：{selected.map50 ?? "—"}</span><span>测试记录：{testRecords.length}</span><span>创建：{selected.created_at.slice(0, 16).replace("T", " ")}</span></div></section> : <section className="panel model-detail-panel empty-state"><strong>选择一个模型查看详情</strong></section>}
-      </div>
+      {notice && <p className="training-workspace-notice">{notice}</p>}
+
+      <ModelLibraryStats
+        total={models.length}
+        ptCount={filterCounts.pt}
+        onnxCount={filterCounts.onnx}
+        bestMap50={formatMetric(bestModel?.map50)}
+      />
+
+      {bestModel && (
+        <ModelLibraryHero
+          bestModel={bestModel}
+          dataset={dataset}
+          busy={busy}
+          onTest={setTesting}
+          onOpenDetail={(model) => setDetailId(model.id)}
+          onExportOnnx={(model) => void exportOnnx(model)}
+        />
+      )}
+
+      {comparison && (
+        <section className="models-comparison-result">
+          <div className="models-comparison-result-head">
+            <div>
+              <span className="eyebrow">MODEL COMPARISON</span>
+              <h3>{comparison.candidate.name} vs {comparison.baseline.name}</h3>
+            </div>
+            <button type="button" className="button" onClick={() => setComparison(undefined)}>关闭</button>
+          </div>
+          <div className="models-comparison-deltas">
+            {Object.entries(comparison.deltas).map(([key, value]) => (
+              <span key={key}>
+                <small>{key}</small>
+                <strong className={typeof value === "number" ? (value > 0 ? "positive" : value < 0 ? "negative" : undefined) : undefined}>
+                  {formatDelta(value)}
+                </strong>
+              </span>
+            ))}
+          </div>
+          {comparison.suggestions[0] && <p className="muted">{comparison.suggestions[0]}</p>}
+        </section>
+      )}
+
+      <section className="models-library-section">
+        <div className="models-library-toolbar">
+          <div>
+            <h2>模型列表</h2>
+            <p className="models-library-sub">共 {models.length} 个 · 当前显示 {filteredModels.length} 个</p>
+          </div>
+          <div className="models-library-toolbar-actions">
+            <label className="models-library-search">
+              <IconSearch size={14} />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="搜索名称 / 版本 / 格式"
+              />
+            </label>
+            <select className="models-sort-select" value={listSort} onChange={(event) => setListSort(event.target.value as ModelListSort)} aria-label="排序方式">
+              <option value="newest">最新优先</option>
+              <option value="map50">mAP50 优先</option>
+            </select>
+            <button
+              type="button"
+              className={`models-filter-toggle${includeArchived ? " active" : ""}`}
+              onClick={() => setIncludeArchived((value) => !value)}
+            >
+              {includeArchived ? "含归档" : "仅启用"}
+            </button>
+          </div>
+        </div>
+
+        <div className="models-library-filters" role="tablist" aria-label="模型筛选">
+          {([
+            ["all", "全部"],
+            ["pt", "PT"],
+            ["onnx", "ONNX"],
+            ["best", "Best"],
+            ["archived", "归档"],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={listFilter === id}
+              className={`models-library-filter${listFilter === id ? " active" : ""}`}
+              onClick={() => setListFilter(id)}
+            >
+              {label}
+              <em>{filterCounts[id]}</em>
+            </button>
+          ))}
+        </div>
+
+        {!filteredModels.length ? (
+          <div className="models-library-empty">
+            <strong>{models.length ? "没有匹配的模型" : "暂无模型"}</strong>
+            <p>{models.length ? "试试调整搜索、筛选或归档开关。" : "完成训练后，best.pt 与 last.pt 会自动进入模型库。"}</p>
+            {!!models.length && (
+              <button type="button" className="button" onClick={() => { setSearch(""); setListFilter("all"); }}>
+                清除筛选
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="library-grid">
+            {filteredModels.map((model) => (
+              <ModelLibraryCard
+                key={model.id}
+                model={model}
+                models={models}
+                datasetName={dataset.name}
+                selected={selectedIds.includes(model.id)}
+                busy={busy}
+                onToggleSelect={(id) => setSelectedIds((ids) => ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id])}
+                onTest={setTesting}
+                onOpenDetail={(item) => setDetailId(item.id)}
+                onExportOnnx={(item) => void exportOnnx(item)}
+                onDelete={remove}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <ModelComparisonBar
+        selectedIds={selectedIds}
+        models={models}
+        compareBusy={compareBusy}
+        busy={busy}
+        onCompareSelected={() => void compareSelected()}
+        onCompareWithBest={() => void compareWithBest()}
+        onDeleteSelected={removeSelected}
+        onDismiss={() => setSelectedIds([])}
+      />
+
       {testing && <ModelTestModal model={testing} onClose={() => setTesting(undefined)} />}
     </main>
   );
 }
 
-function errorMessage(reason: unknown): string { return reason instanceof Error ? reason.message : "操作失败，请检查后端服务。"; }
+function errorMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : "操作失败，请检查后端服务。";
+}
