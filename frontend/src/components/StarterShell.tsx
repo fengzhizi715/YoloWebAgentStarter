@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { AppLocale } from "../locale";
 import { localeText } from "../locale";
 
-export type StarterSection = "workspace" | "training" | "models" | "settings-sam" | "settings-language" | "logs";
+export type StarterSection = "workspace" | "training" | "models" | "settings" | "logs";
 
 interface Props {
   active: StarterSection;
@@ -16,9 +16,8 @@ const navigation: Array<{ id: StarterSection; label: string; icon: ReactNode }> 
   { id: "workspace", label: "数据集", icon: <DatasetIcon /> },
   { id: "training", label: "训练", icon: <TrainingIcon /> },
   { id: "models", label: "模型", icon: <ModelIcon /> },
-  { id: "settings-sam", label: "SAM 设置", icon: <SettingsIcon /> },
-  { id: "settings-language", label: "语言设置", icon: <LanguageIcon /> },
   { id: "logs", label: "日志", icon: <LogsIcon /> },
+  { id: "settings", label: "设置", icon: <SettingsIcon /> },
 ];
 
 /**
@@ -31,8 +30,7 @@ export function StarterShell({ active, datasetName, onNavigate, locale = "zh", c
     workspace: text.datasets,
     training: text.training,
     models: text.models,
-    "settings-sam": text.samSettings,
-    "settings-language": text.languageSettings,
+    settings: text.settingsGroup,
     logs: text.logs,
   };
   return (
@@ -55,9 +53,9 @@ export function StarterShell({ active, datasetName, onNavigate, locale = "zh", c
           </div>
           <nav className="starter-menu" aria-label="主导航">
             <span className="starter-menu-group-label">{text.workspaceGroup}</span>
-            {navigation.slice(0, 3).map((item) => <NavigationButton key={item.id} item={item} active={active} labels={labels} onNavigate={onNavigate} />)}
+            {navigation.slice(0, 4).map((item) => <NavigationButton key={item.id} item={item} active={active} labels={labels} onNavigate={onNavigate} />)}
             <span className="starter-menu-group-label">{text.settingsGroup}</span>
-            {navigation.slice(3).map((item) => <NavigationButton key={item.id} item={item} active={active} labels={labels} onNavigate={onNavigate} />)}
+            {navigation.slice(4).map((item) => <NavigationButton key={item.id} item={item} active={active} labels={labels} onNavigate={onNavigate} />)}
           </nav>
           <div className="starter-sidebar-note">
             <strong>本地 YOLO 工作台</strong>
@@ -82,5 +80,4 @@ function TrainingIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><pa
 function ModelIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z" /><path d="m5 7 7 4 7-4M12 11v10" /></svg>; }
 function LocalIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v11H5z" /><path d="M9 19.5h6M12 15.5v4" /></svg>; }
 function SettingsIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" /><path d="m19 13.5 1.2 1-.2 1.7-1.5 1-1.7-.6-1 1.1.1 1.8-1.5.8-1.4-1.1h-1.5L10 20.3l-1.6-.8.1-1.8-1-1.1-1.7.6-1.5-1 .2-1.7 1.2-1v-1.5l-1.2-1 .2-1.7 1.5-1 1.7.6 1-1.1-.1-1.8L10 5l1.4 1.1h1.5L14.3 5l1.6.8-.1 1.8 1 1.1 1.7-.6 1.5 1-.2 1.7-1.2 1Z" /></svg>; }
-function LanguageIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M3.8 12h16.4M12 3.5c2.1 2.3 3.2 5.1 3.2 8.5S14.1 18.2 12 20.5c-2.1-2.3-3.2-5.1-3.2-8.5S9.9 5.8 12 3.5Z" /></svg>; }
 function LogsIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5h12v15H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></svg>; }

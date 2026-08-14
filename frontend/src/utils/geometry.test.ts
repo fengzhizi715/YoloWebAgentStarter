@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampOBBToImage, normalizeAngle, normalizeBBox, obbCorners, toOriginalPoint } from "./geometry";
+import { clampBBoxToImage, clampOBBToImage, normalizeAngle, normalizeBBox, obbCorners, toOriginalPoint } from "./geometry";
 
 describe("annotation geometry helpers", () => {
   it("normalizes a drag in any direction", () => {
@@ -8,6 +8,10 @@ describe("annotation geometry helpers", () => {
 
   it("maps display coordinates back to absolute image pixels", () => {
     expect(toOriginalPoint([50, 25], 100, 50, 1000, 500)).toEqual([500, 250]);
+  });
+
+  it("keeps edited boxes within the image bounds", () => {
+    expect(clampBBoxToImage({ x: -10, y: 70, width: 140, height: 20 }, 100, 80)).toEqual({ x: 0, y: 60, width: 100, height: 20 });
   });
 
   it("normalizes OBB rotation while keeping edited corners inside the image", () => {

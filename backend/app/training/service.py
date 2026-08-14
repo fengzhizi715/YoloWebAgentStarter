@@ -18,6 +18,7 @@ from app.training.artifacts.checkpoints import checkpoint_paths
 from app.training.config import build_training_command, resolve_model_reference, validate_model_family
 from app.training.observability.log_store import TrainingLogStore
 from app.training.observability.summary import write_training_summary
+from app.training.observability.telemetry import TrainingTelemetryService
 from app.training.runtime.process_registry import process_registry
 from app.training.runtime.queue import TrainingQueue
 from app.training.runtime.device_service import DeviceService
@@ -171,7 +172,11 @@ class TrainingService:
         query = select(TrainingTask).order_by(TrainingTask.created_at.desc(), TrainingTask.id.desc())
         if dataset_id:
             query = query.where(TrainingTask.dataset_id == dataset_id)
-        return TrainingTaskList(items=[task_response(task) for task in session.scalars(query)])
+        tasks = list(session.scalars(query))
+        telemetry = TrainingTelemetryService()
+        for task in tasks:
+            telemetry.refresh_task(session, task)
+        return TrainingTaskList(items=[task_response(task) for task in tasks])
 
     def get_task(self, session: Session, task_id: str) -> TrainingTask:
         task = session.get(TrainingTask, task_id)
@@ -180,7 +185,8 @@ class TrainingService:
         return task
 
     def get_task_response(self, session: Session, task_id: str) -> TrainingTaskResponse:
-        return task_response(self.get_task(session, task_id))
+        task = self.get_task(session, task_id)
+        return task_response(TrainingTelemetryService().refresh_task(session, task))
 
     def stop_task(self, session: Session, task_id: str) -> TrainingTaskResponse:
         task = self.get_task(session, task_id)
@@ -207,9 +213,9 @@ class TrainingService:
         return TrainingLogResponse(task_id=task_id, logs=store.read(tail), line_count=store.line_count())
 
     def summary(self, session: Session, task_id: str) -> TrainingSummaryResponse:
-        task = self.get_task(session, task_id)
+        task = TrainingTelemetryService().refresh_task(session, self.get_task(session, task_id))
         store = TrainingLogStore(task.logs_path or "train.log")
-        if task.summary_path and Path(task.summary_path).is_file():
+        if task.status in {"completed", "failed", "stopped"} and task.summary_path and Path(task.summary_path).is_file():
             import json
 
             try:

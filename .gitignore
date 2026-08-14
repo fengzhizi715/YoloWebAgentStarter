@@ -17,3 +17,9 @@ frontend/vite.config.d.ts
 npm-debug.log*
 
 .idea/
+
+# Local model and training artifacts
+runs/
+*.pt
+*.onnx
+*.engine

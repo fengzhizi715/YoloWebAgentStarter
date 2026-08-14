@@ -80,4 +80,21 @@ describe("AnnotationView persistence", () => {
       { id: "ann-1", class_id: "cls-1", type: "obb", obb: { cx: 50, cy: 40, width: 60, height: 40, angle: 45 }, source: "manual" },
     ]);
   });
+
+  it("keeps previous and next navigation available by button and keyboard", () => {
+    const onPrevious = vi.fn();
+    const onNext = vi.fn();
+    act(() => {
+      root?.render(<AnnotationView dataset={{ ...dataset, image_count: 2 }} image={image} images={[image, secondImage]} onImageSelect={vi.fn()} classes={classes} annotations={[annotation]} activeClassId="cls-1" onClassChange={vi.fn()} onBack={vi.fn()} onPrevious={onPrevious} onNext={onNext} hasPrevious hasNext onSave={vi.fn()} onSam={vi.fn()} onSamPoints={vi.fn()} busy={false} />);
+    });
+
+    const previous = container?.querySelector<HTMLButtonElement>(".annotation-navigation button:first-child");
+    const next = container?.querySelector<HTMLButtonElement>(".annotation-navigation button:last-child");
+    expect(previous?.textContent).toContain("上一张");
+    expect(next?.textContent).toContain("下一张");
+    act(() => next?.click());
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" })));
+    expect(onNext).toHaveBeenCalledTimes(1);
+    expect(onPrevious).toHaveBeenCalledTimes(1);
+  });
 });

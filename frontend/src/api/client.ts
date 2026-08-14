@@ -136,7 +136,6 @@ export const api = {
   modelEvaluationLogs: (modelId: string, evaluationId: string, tail = 500) => request<{ evaluation_id: string; logs: string; line_count: number }>(`/api/models/${modelId}/evaluations/${evaluationId}/logs?tail=${tail}`),
   modelEvaluationArtifactUrl: (modelId: string, evaluationId: string, artifact: "confusion_matrix" | "pr_curve" | "box_pr_curve" | "mask_pr_curve" | "predictions") => apiUrl(`/api/models/${modelId}/evaluations/${evaluationId}/artifacts/${artifact}`),
   compareModels: (baselineModelId: string, candidateModelId: string) => request<ModelComparison>("/api/models/compare", json({ baseline_model_id: baselineModelId, candidate_model_id: candidateModelId })),
-  preannotate: (modelId: string, datasetId: string, imageIds: string[]) => request<{ model_id: string; dataset_id: string; images: Array<{ image_id: string; annotations: unknown[] }> }>(`/api/models/${modelId}/preannotate`, json({ dataset_id: datasetId, image_ids: imageIds })),
   downloadModelUrl: (modelId: string) => apiUrl(`/api/models/${modelId}/download`),
   runtimeLogs: (options: { lines?: number; level?: string } = {}) => {
     const query = new URLSearchParams();

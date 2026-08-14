@@ -8,7 +8,7 @@ from app.api.dependencies import get_evaluation_runner, get_session, get_setting
 from app.core.config import Settings
 from app.core.errors import ValidationError
 from app.core.storage import Storage
-from app.models.schemas import InferenceResult, ModelCompareRequest, ModelCompareResponse, ModelEvaluationLogResponse, ModelEvaluationRecordResponse, ModelEvaluationRequest, ModelTestRecordResponse, ModelVersionList, ModelVersionResponse, ModelVersionUpdate, PreAnnotationRequest, PreAnnotationResponse
+from app.models.schemas import InferenceResult, ModelCompareRequest, ModelCompareResponse, ModelEvaluationLogResponse, ModelEvaluationRecordResponse, ModelEvaluationRequest, ModelTestRecordResponse, ModelVersionList, ModelVersionResponse, ModelVersionUpdate
 from app.models.evaluation import YoloEvaluationRunner
 from app.models.service import ModelService
 
@@ -153,8 +153,3 @@ def get_model_evaluation_artifact(
 ) -> FileResponse:
     path = ModelService(storage).evaluation_artifact_path(session, model_id, evaluation_id, artifact)
     return FileResponse(path)
-
-
-@router.post("/{model_id}/preannotate", response_model=PreAnnotationResponse)
-def preannotate_images(model_id: str, payload: PreAnnotationRequest, session: Session = Depends(get_session), storage: Storage = Depends(get_storage)) -> PreAnnotationResponse:
-    return PreAnnotationResponse(model_id=model_id, dataset_id=payload.dataset_id, images=ModelService(storage).preannotate(session, model_id, payload.dataset_id, payload.image_ids, payload.confidence, payload.iou))

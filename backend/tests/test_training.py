@@ -59,6 +59,29 @@ printf 'fake last' > "$project/$name/weights/last.pt"
     path.chmod(0o755)
 
 
+def live_metrics_yolo(path: Path) -> None:
+    path.write_text(
+        """#!/bin/sh
+project=""
+name="run"
+for arg in "$@"; do
+  case "$arg" in
+    project=*) project="${arg#project=}" ;;
+    name=*) name="${arg#name=}" ;;
+  esac
+done
+mkdir -p "$project/$name/weights"
+printf 'epoch,metrics/mAP50(B),metrics/mAP50-95(B),metrics/precision(B),metrics/recall(B)\\n0,0.42,0.21,0.60,0.30\\n' > "$project/$name/results.csv"
+printf '1/3\\n'
+sleep 1
+printf 'fake best' > "$project/$name/weights/best.pt"
+printf 'fake last' > "$project/$name/weights/last.pt"
+""",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
 def prepared_dataset(client, task_type: str = "detect") -> tuple[str, str]:
     dataset = client.post("/api/datasets", json={"name": f"train-{task_type}", "task_type": task_type}).json()
     dataset_id = dataset["id"]
@@ -120,6 +143,32 @@ def test_training_task_runs_and_persists_checkpoints(client, tmp_path, monkeypat
     assert models["total"] == 2
     best = next(item for item in models["items"] if item["artifact_type"] == "best")
     assert client.get(f"/api/models/{best['id']}/download").content == b"fake best"
+
+
+def test_running_task_refreshes_live_metrics_and_history(client, tmp_path, monkeypatch):
+    executable = tmp_path / "live-metrics-yolo"
+    live_metrics_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+    dataset_id, _ = prepared_dataset(client)
+
+    response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "name": "live", "model": "yolo11n.pt", "epochs": 3, "batch_size": 1},
+    )
+    assert response.status_code == 201, response.text
+    task_id = response.json()["id"]
+    for _ in range(30):
+        task = client.get(f"/api/training/tasks/{task_id}").json()
+        if task["status"] == "running" and task["metrics_json"].get("map50") == 0.42:
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("live task telemetry was not refreshed")
+    assert task["progress_epoch"] == 1
+    summary = client.get(f"/api/training/tasks/{task_id}/summary").json()
+    assert summary["metrics"]["map50"] == 0.42
+    assert summary["metrics"]["history"] == [{"epoch": 0.0, "precision": 0.6, "recall": 0.3, "map50": 0.42, "map50_95": 0.21}]
+    assert wait_for_terminal(client, task_id)["status"] == "completed"
 
 
 def test_completed_task_starts_new_training_from_selected_checkpoint(client, tmp_path, monkeypatch):
@@ -337,6 +386,9 @@ def test_training_rejects_missing_validation_split(client):
     )
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "training_split_missing"
+    runtime_logs = client.get("/api/logs/runtime?lines=30&level=WARNING")
+    assert runtime_logs.status_code == 200
+    assert any("code=training_split_missing" in line for line in runtime_logs.json()["lines"])
 
 
 def test_segment_training_uses_segment_weight_family(client, tmp_path, monkeypatch):

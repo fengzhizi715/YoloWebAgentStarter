@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.errors import ConflictError, DomainError, NotFoundError, ValidationError
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ywa")
 
 
 def register_error_handlers(app: FastAPI) -> None:
@@ -20,6 +20,13 @@ def register_error_handlers(app: FastAPI) -> None:
             status_code = 409
         elif isinstance(exc, ValidationError):
             status_code = 422
+        logger.warning(
+            "Request rejected method=%s path=%s code=%s message=%s",
+            request.method,
+            request.url.path,
+            exc.error_code,
+            exc.message,
+        )
         return JSONResponse(
             status_code=status_code,
             content={"error": {"code": exc.error_code, "message": exc.message, "details": exc.details}},
@@ -32,4 +39,3 @@ def register_error_handlers(app: FastAPI) -> None:
             status_code=500,
             content={"error": {"code": "internal_error", "message": "An unexpected server error occurred."}},
         )
-

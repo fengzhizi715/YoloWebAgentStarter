@@ -9,7 +9,7 @@ import type { Annotation, ClassLabel, ImageItem } from "../types";
 vi.mock("react-konva", async () => {
   const { forwardRef, useImperativeHandle } = await import("react");
   return {
-    Stage: ({ children }: any) => <div data-testid="stage">{children}</div>,
+    Stage: ({ children, ...props }: any) => <div data-testid="stage" {...props}>{children}</div>,
     Layer: ({ children }: any) => <div>{children}</div>,
     Image: () => <div data-testid="image" />,
     Line: () => <div data-testid="line" />,
@@ -127,5 +127,27 @@ describe("AnnotationCanvas OBB interactions", () => {
     const remove = Array.from(container?.querySelectorAll<HTMLButtonElement>("button") ?? []).find((item) => item.textContent === "删除所选 OBB");
     act(() => remove?.click());
     expect(onChange).toHaveBeenLastCalledWith([]);
+  });
+
+  it("does not cancel a normal drag when pointerup precedes mouseup", async () => {
+    const onChange = vi.fn();
+    await act(async () => {
+      root?.render(<AnnotationCanvas image={image} classes={classes} annotations={[]} activeClassId="cls-1" taskType="detect" onChange={onChange} />);
+    });
+
+    const stage = container?.querySelector<HTMLDivElement>("[data-testid='stage']") as (HTMLDivElement & { getStage?: () => unknown; getClassName?: () => string; getPointerPosition?: () => { x: number; y: number } }) | null;
+    expect(stage).toBeTruthy();
+    let position = { x: 10, y: 10 };
+    stage!.getStage = () => stage;
+    stage!.getClassName = () => "Stage";
+    stage!.getPointerPosition = () => position;
+
+    act(() => stage?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+    position = { x: 60, y: 50 };
+    act(() => stage?.dispatchEvent(new MouseEvent("mousemove", { bubbles: true })));
+    act(() => window.dispatchEvent(new Event("pointerup", { bubbles: true })));
+    act(() => stage?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+
+    expect(onChange).toHaveBeenCalledWith([{ class_id: "cls-1", type: "bbox", bbox: { x: 10, y: 10, width: 50, height: 40 }, source: "manual" }]);
   });
 });

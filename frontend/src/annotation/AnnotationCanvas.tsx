@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Konva from "konva";
 import { Image as KonvaImage, Layer, Line, Rect, Stage, Transformer } from "react-konva";
 import type { Annotation, BBox, ClassLabel, ImageItem, OBB, SamCapabilities, TaskType } from "../types";
-import { clamp, clampOBBToImage, MIN_SHAPE_SIZE, normalizeAngle, normalizeBBox, toOriginalPoint } from "../utils/geometry";
+import { clamp, clampBBoxToImage, clampOBBToImage, MIN_SHAPE_SIZE, normalizeAngle, normalizeBBox, toOriginalPoint } from "../utils/geometry";
 
 export type AnnotationDraft = {
   id?: string;
@@ -42,9 +42,11 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
   const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
   const [angle, setAngle] = useState(0);
   const [selectedObbId, setSelectedObbId] = useState<string>();
+  const [selectedBboxId, setSelectedBboxId] = useState<string>();
   const [displaySize, setDisplaySize] = useState({ width: MAX_WIDTH, height: MAX_HEIGHT });
   const transformerRef = useRef<Konva.Transformer>(null);
   const obbRefs = useRef<Record<string, Konva.Rect | null>>({});
+  const bboxRefs = useRef<Record<string, Konva.Rect | null>>({});
 
   useEffect(() => {
     const element = new window.Image();
@@ -62,6 +64,7 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
     setDragStart(undefined);
     setDragEnd(undefined);
     setSelectedObbId(undefined);
+    setSelectedBboxId(undefined);
   }, [taskType, image.id]);
 
   useEffect(() => {
@@ -70,12 +73,25 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
 
   const scale = useMemo(() => ({ x: displaySize.width / image.width, y: displaySize.height / image.height }), [displaySize, image]);
   const selectedObb = annotations.find((item) => item.id === selectedObbId && item.type === "obb");
+  const selectedBbox = annotations.find((item) => item.id === selectedBboxId && item.type === "bbox");
 
   useEffect(() => {
-    const node = selectedObb ? obbRefs.current[selectedObb.id] : null;
+    const node = selectedObb ? obbRefs.current[selectedObb.id] : selectedBbox ? bboxRefs.current[selectedBbox.id] : null;
     transformerRef.current?.nodes(node ? [node] : []);
     transformerRef.current?.getLayer()?.batchDraw();
-  }, [annotations, selectedObb]);
+  }, [annotations, selectedBbox, selectedObb]);
+
+  useEffect(() => {
+    if (!dragStart) return;
+    const cancelDrawing = () => {
+      setDragStart(undefined);
+      setDragEnd(undefined);
+    };
+    window.addEventListener("mouseup", cancelDrawing);
+    return () => {
+      window.removeEventListener("mouseup", cancelDrawing);
+    };
+  }, [dragStart]);
 
   const toOriginal = (point: [number, number]) => toOriginalPoint(point, displaySize.width, displaySize.height, image.width, image.height);
   const pointer = (event: { target: { getStage: () => { getPointerPosition: () => { x: number; y: number } | null } | null } }): [number, number] | undefined => {
@@ -90,6 +106,15 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
     image.width,
     image.height,
   );
+
+  const replaceBbox = (id: string, stageBox: BBox) => {
+    const updated = clampBBoxToImage(
+      { x: stageBox.x / scale.x, y: stageBox.y / scale.y, width: stageBox.width / scale.x, height: stageBox.height / scale.y },
+      image.width,
+      image.height,
+    );
+    onChange(annotations.map((item) => item.id === id && item.type === "bbox" ? { ...toDraft(item), bbox: updated } : toDraft(item)));
+  };
 
   const replaceObb = (id: string, stageObb: OBB) => {
     const updated = toImageObb(stageObb);
@@ -125,7 +150,7 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
           <button className="button" onClick={() => { setPolygonPoints([]); setDragStart(undefined); setDragEnd(undefined); setSelectedObbId(undefined); }}>清空草稿</button>
         </div>
       </div>
-      <p className="hint">当前类别：{classes.find((item) => item.id === activeClassId)?.name ?? "未选择"}。{taskType === "obb" ? selectedObb ? "已选中 OBB：拖动可移动，四角手柄可缩放，顶部圆形手柄可旋转。" : "拖拽创建 OBB；点击既有框即可选择、旋转、缩放或删除。" : tool === "sam" ? samConfigured ? "拖拽一个提示框，SAM 会返回可确认的多边形建议。" : "未配置 SAM：框选只会生成可审阅的矩形建议，不会运行模型推理。" : tool === "sam_point" ? "点击一个前景点，SAM 会返回可确认的多边形建议。" : taskType === "segment" && !samConfigured ? "SAM 未配置；可使用 Polygon，或使用仅供审阅的框形建议。" : "坐标以原图像素保存。"}</p>
+      <p className="hint">当前类别：{classes.find((item) => item.id === activeClassId)?.name ?? "未选择"}。{taskType === "obb" ? selectedObb ? "已选中 OBB：拖动可移动，四角手柄可缩放，顶部圆形手柄可旋转。" : "拖拽创建 OBB；点击既有框即可选择、旋转、缩放或删除。" : taskType === "detect" && selectedBbox ? "已选中框：拖动可移动，四角手柄可调整大小；BBox 不支持旋转。" : tool === "sam" ? samConfigured ? "拖拽一个提示框，SAM 会返回可确认的多边形建议。" : "未配置 SAM：框选只会生成可审阅的矩形建议，不会运行模型推理。" : tool === "sam_point" ? "点击一个前景点，SAM 会返回可确认的多边形建议。" : taskType === "segment" && !samConfigured ? "SAM 未配置；可使用 Polygon，或使用仅供审阅的框形建议。" : "坐标以原图像素保存。"}</p>
       <div className="stage-wrap">
         {imageElement ? (
           <Stage
@@ -134,7 +159,7 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
             onMouseDown={(event) => {
               const point = pointer(event);
               if (!point) return;
-              if (tool === "obb" && !["Stage", "Layer"].includes(event.target.getClassName())) return;
+              if (tool !== "polygon" && !["Stage", "Layer"].includes(event.target.getClassName())) return;
               if (tool === "sam_point" && onSamPoints) {
                 void onSamPoints([toOriginal(point)]);
                 return;
@@ -150,7 +175,11 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
             onMouseUp={(event) => {
               if (tool === "polygon" || tool === "sam_point" || !dragStart) return;
               const point = pointer(event);
-              if (!point) return;
+              if (!point) {
+                setDragStart(undefined);
+                setDragEnd(undefined);
+                return;
+              }
               const displayBox = normalizeBBox(dragStart, point);
               const box = { x: displayBox.x / scale.x, y: displayBox.y / scale.y, width: displayBox.width / scale.x, height: displayBox.height / scale.y };
               if (box.width >= MIN_SHAPE_SIZE && box.height >= MIN_SHAPE_SIZE) {
@@ -165,14 +194,20 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
               setDragStart(undefined);
               setDragEnd(undefined);
             }}
+            onMouseLeave={() => {
+              if (tool !== "polygon" && tool !== "sam_point") {
+                setDragStart(undefined);
+                setDragEnd(undefined);
+              }
+            }}
           >
             <Layer>
               <KonvaImage image={imageElement} width={displaySize.width} height={displaySize.height} listening={false} />
-              {annotations.map((annotation) => annotation.type === "obb" && annotation.obb ? <EditableObb key={annotation.id} annotation={annotation} stageObb={toStageObb(annotation.obb)} selected={annotation.id === selectedObbId} setNodeRef={(node) => { obbRefs.current[annotation.id] = node; }} onSelect={() => setSelectedObbId(annotation.id)} onChange={(updated) => replaceObb(annotation.id, updated)} /> : <AnnotationShape key={annotation.id} annotation={annotation} scale={scale} />)}
+              {annotations.map((annotation) => annotation.type === "obb" && annotation.obb ? <EditableObb key={annotation.id} annotation={annotation} stageObb={toStageObb(annotation.obb)} selected={annotation.id === selectedObbId} setNodeRef={(node) => { obbRefs.current[annotation.id] = node; }} onSelect={() => { setSelectedObbId(annotation.id); setSelectedBboxId(undefined); }} onChange={(updated) => replaceObb(annotation.id, updated)} /> : annotation.type === "bbox" && annotation.bbox ? <EditableBbox key={annotation.id} annotation={annotation} scale={scale} selected={annotation.id === selectedBboxId} setNodeRef={(node) => { bboxRefs.current[annotation.id] = node; }} onSelect={() => { setSelectedBboxId(annotation.id); setSelectedObbId(undefined); }} onChange={(updated) => replaceBbox(annotation.id, updated)} /> : <AnnotationShape key={annotation.id} annotation={annotation} scale={scale} />)}
               {dragStart && dragEnd && tool !== "obb" && <Rect {...displayBox(normalizeBBox(dragStart, dragEnd))} stroke="#f97316" dash={[6, 4]} />}
               {draftObb && <Rect x={draftObb.x + draftObb.width / 2} y={draftObb.y + draftObb.height / 2} width={draftObb.width} height={draftObb.height} offsetX={draftObb.width / 2} offsetY={draftObb.height / 2} rotation={angle} stroke="#f97316" dash={[6, 4]} />}
               {polygonPoints.length > 0 && <Line points={polygonPoints.flat()} stroke="#f97316" strokeWidth={2} closed={false} dash={[6, 4]} />}
-              <Transformer ref={transformerRef} rotateEnabled enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]} rotateAnchorOffset={28} boundBoxFunc={(previous, next) => next.width < MIN_SHAPE_SIZE * scale.x || next.height < MIN_SHAPE_SIZE * scale.y ? previous : next} />
+              <Transformer ref={transformerRef} rotateEnabled={Boolean(selectedObb)} flipEnabled={false} enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]} rotateAnchorOffset={28} boundBoxFunc={(previous, next) => next.width < MIN_SHAPE_SIZE * scale.x || next.height < MIN_SHAPE_SIZE * scale.y ? previous : next} />
             </Layer>
           </Stage>
         ) : <div className="loading">正在载入图片…</div>}
@@ -188,6 +223,13 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
 
 function EditableObb({ annotation, stageObb, selected, setNodeRef, onSelect, onChange }: { annotation: Annotation; stageObb: OBB; selected: boolean; setNodeRef: (node: Konva.Rect | null) => void; onSelect: () => void; onChange: (obb: OBB) => void }) {
   return <Rect ref={setNodeRef} x={stageObb.cx} y={stageObb.cy} width={stageObb.width} height={stageObb.height} offsetX={stageObb.width / 2} offsetY={stageObb.height / 2} rotation={stageObb.angle} stroke={annotation.color} strokeWidth={selected ? 3 : 2} fill={selected ? `${annotation.color}22` : "transparent"} draggable onMouseDown={(event) => { event.cancelBubble = true; onSelect(); }} onClick={onSelect} onTap={onSelect} onDragEnd={(event) => onChange({ ...stageObb, cx: event.target.x(), cy: event.target.y() })} onTransformEnd={(event) => { const node = event.target; const scaleX = node.scaleX(); const scaleY = node.scaleY(); node.scaleX(1); node.scaleY(1); onChange({ cx: node.x(), cy: node.y(), width: Math.abs(node.width() * scaleX), height: Math.abs(node.height() * scaleY), angle: node.rotation() }); }} />;
+}
+
+function EditableBbox({ annotation, scale, selected, setNodeRef, onSelect, onChange }: { annotation: Annotation; scale: { x: number; y: number }; selected: boolean; setNodeRef: (node: Konva.Rect | null) => void; onSelect: () => void; onChange: (bbox: BBox) => void }) {
+  const bbox = annotation.bbox;
+  if (!bbox) return null;
+  const stageBox = { x: bbox.x * scale.x, y: bbox.y * scale.y, width: bbox.width * scale.x, height: bbox.height * scale.y };
+  return <Rect ref={setNodeRef} {...stageBox} stroke={annotation.color} strokeWidth={selected ? 3 : 2} fill={selected ? `${annotation.color}22` : "transparent"} draggable onMouseDown={(event) => { event.cancelBubble = true; onSelect(); }} onClick={onSelect} onTap={onSelect} onDragEnd={(event) => onChange({ ...stageBox, x: event.target.x(), y: event.target.y() })} onTransformEnd={(event) => { const node = event.target; const scaleX = node.scaleX(); const scaleY = node.scaleY(); node.scaleX(1); node.scaleY(1); onChange({ x: node.x(), y: node.y(), width: Math.abs(node.width() * scaleX), height: Math.abs(node.height() * scaleY) }); }} />;
 }
 
 function displayBox(box: BBox) {

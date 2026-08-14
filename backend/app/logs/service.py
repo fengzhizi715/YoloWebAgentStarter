@@ -54,27 +54,55 @@ def read_runtime_logs(settings: Settings, *, lines: int = 300, level: str | None
     if normalized not in LOG_LEVELS:
         normalized = None
     path = runtime_log_path(settings)
-    if not path.is_file():
+    log_files = _runtime_log_files(path)
+    if not log_files:
         return RuntimeLogResponse(path=str(path), level=normalized, lines=[])
     if normalized is None:
-        return RuntimeLogResponse(path=str(path), level=None, lines=_tail_log_lines(path, safe_lines))
+        return RuntimeLogResponse(path=str(path), level=None, lines=_tail_log_history(log_files, safe_lines))
 
-    # The active file is capped by RotatingFileHandler, so this level-aware
-    # pass remains bounded while preserving stack-trace continuation lines.
+    # Each retained file is capped by RotatingFileHandler, so this level-aware
+    # pass across the complete rotation history remains bounded while
+    # preserving stack-trace continuation lines at file boundaries.
     tail: deque[str] = deque(maxlen=safe_lines)
     include_continuation = normalized is None
-    with path.open("r", encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            clean = line.rstrip("\n")
-            if normalized is None:
-                tail.append(clean)
-                continue
-            current = _line_level(clean)
-            if current is not None:
-                include_continuation = current == normalized
-            if include_continuation:
-                tail.append(clean)
+    for log_file in log_files:
+        with log_file.open("r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                clean = line.rstrip("\n")
+                current = _line_level(clean)
+                if current is not None:
+                    include_continuation = current == normalized
+                if include_continuation:
+                    tail.append(clean)
     return RuntimeLogResponse(path=str(path), level=normalized, lines=list(tail))
+
+
+def _runtime_log_files(path: Path) -> list[Path]:
+    """Return retained rotation files in chronological order."""
+
+    return [
+        candidate
+        for candidate in [
+            *(path.with_name(f"{path.name}.{index}") for index in range(RUNTIME_LOG_BACKUP_COUNT, 0, -1)),
+            path,
+        ]
+        if candidate.is_file()
+    ]
+
+
+def _tail_log_history(log_files: list[Path], line_count: int) -> list[str]:
+    """Tail multiple rotated files without reading older history unnecessarily."""
+
+    remaining = line_count
+    chunks: list[list[str]] = []
+    for log_file in reversed(log_files):
+        lines = _tail_log_lines(log_file, remaining)
+        if lines:
+            chunks.append(lines)
+            remaining -= len(lines)
+        if remaining <= 0:
+            break
+    return [line for chunk in reversed(chunks) for line in chunk][-line_count:]
 
 
 def _tail_log_lines(path: Path, line_count: int) -> list[str]:

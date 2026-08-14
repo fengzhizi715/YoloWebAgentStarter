@@ -331,41 +331,6 @@ class ModelService:
             raise NotFoundError("evaluation_artifact_not_found", "Evaluation artifact was not found.")
         return path
 
-    def preannotate(self, session: Session, model_id: str, dataset_id: str, image_ids: list[str], confidence: float, iou: float) -> list[dict]:
-        model = self.get_model(session, model_id)
-        if model.dataset_id != dataset_id:
-            raise ValidationError("preannotation_dataset_mismatch", "Pre-annotation requires a model trained from this dataset.")
-        if model.format != "pt" or model.engine_type != "ultralytics":
-            raise ValidationError("unsupported_model_engine", "Pre-annotation requires a managed Ultralytics PT model.")
-        target_classes = {item.class_index: item.id for item in session.scalars(select(ClassLabel).where(ClassLabel.dataset_id == dataset_id))}
-        ids = list(dict.fromkeys(image_ids))
-        images = list(session.scalars(select(ImageItem).where(ImageItem.dataset_id == dataset_id, ImageItem.id.in_(ids))))
-        if len(images) != len(ids):
-            raise ValidationError("image_not_found", "One or more selected images were not found in this dataset.")
-        path = self.download_path(session, model_id)
-        names = {index: str(index) for index in target_classes}
-        results: list[dict] = []
-        for image in images:
-            inference = run_test_inference(model_id=model.id, model_path=path, task_type=model.task_type, image_bytes=self.storage.read_image(dataset_id, image.storage_name), confidence=confidence, iou=iou, class_names=names)
-            annotations: list[dict] = []
-            for item in inference["detections"]:
-                if item["confidence"] < confidence:
-                    continue
-                class_id = target_classes.get(item["class_index"])
-                if class_id is None:
-                    continue
-                if model.task_type == "segment" and item["polygon"]:
-                    annotations.append({"type": "polygon", "class_id": class_id, "polygon": item["polygon"], "source": "manual"})
-                elif model.task_type == "obb" and item["obb_points"]:
-                    annotations.append({"type": "obb", "class_id": class_id, "obb": self._obb_from_points(item["obb_points"]), "source": "manual"})
-                elif model.task_type == "detect":
-                    annotations.append({"type": "bbox", "class_id": class_id, "bbox": {"x": item["x"], "y": item["y"], "width": item["width"], "height": item["height"]}, "source": "manual"})
-                elif model.task_type == "classify":
-                    annotations = [{"type": "classify", "class_id": class_id, "source": "manual"}]
-                    break
-            results.append({"image_id": image.id, "annotations": annotations})
-        return results
-
     def compare(self, session: Session, baseline_id: str, candidate_id: str) -> dict:
         baseline, candidate = self.get_model(session, baseline_id), self.get_model(session, candidate_id)
         if baseline.id == candidate.id or not baseline.dataset_id or baseline.dataset_id != candidate.dataset_id or baseline.task_type != candidate.task_type:

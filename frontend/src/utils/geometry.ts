@@ -15,6 +15,18 @@ export function normalizeBBox(start: [number, number], end: [number, number]): B
   };
 }
 
+/** Keep a persisted axis-aligned box inside the source image. */
+export function clampBBoxToImage(bbox: BBox, imageWidth: number, imageHeight: number): BBox {
+  const width = Math.min(Math.max(bbox.width, MIN_SHAPE_SIZE), imageWidth);
+  const height = Math.min(Math.max(bbox.height, MIN_SHAPE_SIZE), imageHeight);
+  return {
+    x: clamp(bbox.x, 0, Math.max(0, imageWidth - width)),
+    y: clamp(bbox.y, 0, Math.max(0, imageHeight - height)),
+    width,
+    height,
+  };
+}
+
 export function toOriginalPoint(
   point: [number, number],
   displayWidth: number,

@@ -112,24 +112,6 @@ class ModelEvaluationLogResponse(BaseModel):
     line_count: int
 
 
-class PreAnnotationRequest(BaseModel):
-    dataset_id: str = Field(min_length=1, max_length=64)
-    image_ids: list[str] = Field(min_length=1, max_length=100)
-    confidence: float = Field(default=0.25, ge=0, le=1)
-    iou: float = Field(default=0.45, ge=0, le=1)
-
-
-class PreAnnotationImage(BaseModel):
-    image_id: str
-    annotations: list[dict]
-
-
-class PreAnnotationResponse(BaseModel):
-    model_id: str
-    dataset_id: str
-    images: list[PreAnnotationImage]
-
-
 class ModelCompareRequest(BaseModel):
     baseline_model_id: str
     candidate_model_id: str

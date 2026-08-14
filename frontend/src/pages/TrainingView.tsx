@@ -27,6 +27,7 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onBack }: Pro
   const [workers, setWorkers] = useState(2);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [splitRecovery, setSplitRecovery] = useState(false);
 
   const refresh = useCallback(async () => {
     const result = await api.listTrainingTasks(dataset.id);
@@ -63,17 +64,43 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onBack }: Pro
 
   useEffect(() => {
     if (!selectedTask) { setLogs(undefined); setSummary(undefined); return; }
-    api.getTrainingLogs(selectedTask.id).then(setLogs).catch((reason) => setError(errorMessage(reason)));
-    api.getTrainingSummary(selectedTask.id).then(setSummary).catch((reason) => setError(errorMessage(reason)));
-  }, [selectedTask]);
+    const taskId = selectedTask.id;
+    const active = selectedTask.status === "pending" || selectedTask.status === "running";
+    let cancelled = false;
+    const loadDetail = async () => {
+      try {
+        const [nextLogs, nextSummary] = await Promise.all([api.getTrainingLogs(taskId), api.getTrainingSummary(taskId)]);
+        if (!cancelled) { setLogs(nextLogs); setSummary(nextSummary); }
+      } catch (reason) {
+        if (!cancelled) setError(errorMessage(reason));
+      }
+    };
+    void loadDetail();
+    if (!active) return () => { cancelled = true; };
+    const timer = window.setInterval(() => void loadDetail(), 2500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [selectedTask?.id, selectedTask?.status]);
 
   const start = async () => {
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setSplitRecovery(false);
     try {
       const selectedDevice = device === "cuda" ? (gpuIds.join(",") || "0") : device;
       const task = await api.createTrainingTask({ dataset_id: dataset.id, name: name.trim() || "local-training", model, task_type: dataset.task_type as TaskType, epochs, img_size: imgSize, batch_size: batchSize, device: selectedDevice, workers, seed: 42 });
       setTasks((items) => [task, ...items]);
       setSelectedTask(task);
+    } catch (reason) {
+      const message = errorMessage(reason);
+      setError(message);
+      setSplitRecovery(message.includes("at least one train image and one val image"));
+    } finally { setBusy(false); }
+  };
+
+  const autoSplitForTraining = async () => {
+    setBusy(true); setError("");
+    try {
+      const result = await api.autoSplitImages(dataset.id, { train_ratio: 0.8, val_ratio: 0.2, test_ratio: 0, seed: 42 });
+      setSplitRecovery(false);
+      setError(`已按 80/20 分配 ${result.updated} 张图片：train ${result.split_counts.train}，val ${result.split_counts.val}。现在可以重新创建训练。`);
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
 
@@ -101,7 +128,7 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onBack }: Pro
         <button className="button" onClick={onBack}>← 返回数据集</button>
         <div><span className="eyebrow">LOCAL TRAINING / {dataset.task_type}</span><h1>{dataset.name}</h1><p className="muted">复用已保存的 train / val / test split，在本机运行 Ultralytics YOLO。</p></div>
       </div>
-      {error && <div className="validation invalid"><strong>训练操作失败</strong><span>{error}</span></div>}
+      {error && <div className={`validation ${splitRecovery ? "invalid" : "valid"}`}><strong>{splitRecovery ? "训练尚未创建" : "训练数据已准备"}</strong><span>{error}</span>{splitRecovery && <div className="training-split-recovery"><small>这会重新分配该数据集全部图片的持久化 split；请确认当前 split 不需要保留。</small><button className="button" disabled={busy || dataset.image_count < 2} onClick={() => void autoSplitForTraining()}>自动分配 train / val</button>{dataset.image_count < 2 && <small>至少需要两张图片，才能同时创建 train 与 val split。</small>}</div>}</div>}
       <div className="training-grid">
         <section className="panel training-form">
           <span className="eyebrow">NEW TRAINING TASK</span><h2>训练配置</h2>
@@ -111,7 +138,7 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onBack }: Pro
           <label>基础权重<input value={model} onChange={(event) => setModel(event.target.value)} /><small>建议使用 {defaultModelFor(dataset.task_type)}</small></label>
           <div className="form-row"><label>Epochs<input type="number" min={1} value={epochs} onChange={(event) => setEpochs(Number(event.target.value))} /></label><label>Batch<input type="number" min={1} value={batchSize} onChange={(event) => setBatchSize(Number(event.target.value))} /></label></div>
           <div className="form-row"><label>Image size<input type="number" min={32} step={32} value={imgSize} onChange={(event) => setImgSize(Number(event.target.value))} /></label><label>Workers<input type="number" min={0} value={workers} onChange={(event) => setWorkers(Number(event.target.value))} /></label></div>
-          <label>Device<select value={device} onChange={(event) => { const next = event.target.value; setDevice(next); if (next === "cuda" && !gpuIds.length) { const first = devices.find((item) => item.type === "cuda"); if (first?.index !== null && first?.index !== undefined) setGpuIds([String(first.index)]); } }}><option value="auto">auto</option><option value="cpu">cpu</option>{devices.some((item) => item.type === "mps") && <option value="mps">mps</option>}{devices.some((item) => item.type === "cuda") && <option value="cuda">CUDA</option>}</select></label>
+          <label>Device<select value={device} onChange={(event) => { const next = event.target.value; setDevice(next); if (next === "cuda" && !gpuIds.length) { const first = devices.find((item) => item.type === "cuda"); if (first?.index !== null && first?.index !== undefined) setGpuIds([String(first.index)]); } }}><option value="auto">auto（CUDA → MPS → CPU）</option><option value="cpu">cpu</option>{devices.some((item) => item.type === "mps") && <option value="mps">mps</option>}{devices.some((item) => item.type === "cuda") && <option value="cuda">CUDA</option>}</select></label>
           {device === "cuda" && <GpuPicker devices={devices} mode={gpuMode} selectedIds={gpuIds} onModeChange={setGpuMode} onIdsChange={setGpuIds} />}
           <button className="button primary wide" disabled={busy || (device === "cuda" && (!gpuIds.length || (gpuMode === "multi" && gpuIds.length < 2)))} onClick={start}>创建并运行训练</button>
         </section>

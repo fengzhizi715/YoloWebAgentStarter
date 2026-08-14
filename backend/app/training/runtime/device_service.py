@@ -69,7 +69,19 @@ class DeviceService:
 
     def normalize_selector(self, selector: str | None) -> str:
         raw = (selector or "auto").strip().lower()
-        if raw in {"auto", "cpu", "mps"}:
+        if raw == "auto":
+            devices = self.list_devices()
+            cuda_ids = sorted(
+                device.index
+                for device in devices
+                if device.type == "cuda" and device.index is not None
+            )
+            if cuda_ids:
+                return str(cuda_ids[0])
+            if any(device.type == "mps" for device in devices):
+                return "mps"
+            return "cpu"
+        if raw in {"cpu", "mps"}:
             if raw == "mps":
                 self._require_type(raw)
             return raw
