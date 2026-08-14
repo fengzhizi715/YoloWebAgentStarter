@@ -7,7 +7,7 @@ import { ModelsView } from "./pages/ModelsView";
 import { SettingsView } from "./pages/SettingsView";
 import { LogsView } from "./pages/LogsView";
 import { readLocale, saveLocale, type AppLocale } from "./locale";
-import type { Annotation, BBox, ClassLabel, Dataset, DatasetQualityReport, DuplicateReport, ImageItem, SamCapabilities, SamPrediction, TaskType, ValidationReport } from "./types";
+import type { Annotation, BBox, ClassLabel, Dataset, DatasetQualityReport, DuplicateReport, ImageItem, SamCapabilities, SamPrediction, SplitName, TaskType, ValidationReport } from "./types";
 
 type View = "workspace" | "annotation" | "training" | "models" | "settings-sam" | "settings-language" | "logs";
 type CardReportKind = "validation" | "quality" | "duplicates";
@@ -180,6 +180,15 @@ export default function App() {
           onValidate={(dataset) => runResult(() => api.validateDataset(dataset.id))}
           onQuality={(dataset) => runResult(() => api.qualityReport(dataset.id))}
           onContinueAnnotation={(dataset) => void continueAnnotation(dataset)}
+          onUpload={(dataset, files, split) => run(async () => {
+            const result = await api.uploadImages(dataset.id, files, split);
+            await refreshDatasets();
+            if (selected?.id === dataset.id) {
+              const nextImages = await api.listImages(dataset.id);
+              setImages(nextImages.items);
+            }
+            setNotice(`已添加 ${result.imported} 张图片到 ${split}`);
+          })}
           onTrain={(dataset) => void run(() => loadDataset(dataset, "training"))}
           onDuplicates={(dataset) => runResult(() => api.duplicateReport(dataset.id))}
           onDelete={(dataset) => run(async () => {
@@ -210,6 +219,7 @@ export function DatasetHome(props: {
   onValidate: (dataset: Dataset) => Promise<ValidationReport | undefined>;
   onQuality: (dataset: Dataset) => Promise<DatasetQualityReport | undefined>;
   onContinueAnnotation: (dataset: Dataset) => void;
+  onUpload: (dataset: Dataset, files: File[], split: SplitName) => void;
   onTrain: (dataset: Dataset) => void;
   onDuplicates: (dataset: Dataset) => Promise<DuplicateReport | undefined>;
   onDelete: (dataset: Dataset) => void;
@@ -218,6 +228,9 @@ export function DatasetHome(props: {
   const [exportTarget, setExportTarget] = useState<Dataset>();
   const [exportFormat, setExportFormat] = useState<"yolo" | "coco">("yolo");
   const [deleteTarget, setDeleteTarget] = useState<Dataset>();
+  const [uploadTarget, setUploadTarget] = useState<Dataset>();
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadSplit, setUploadSplit] = useState<SplitName>("train");
   const [name, setName] = useState("");
   const [taskType, setTaskType] = useState<TaskType>("detect");
   const [archive, setArchive] = useState<File>();
@@ -228,6 +241,8 @@ export function DatasetHome(props: {
   const [duplicateReports, setDuplicateReports] = useState<Record<string, DuplicateReport>>({});
   const [expandedReports, setExpandedReports] = useState<Record<string, CardReportKind | undefined>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploadFileRef = useRef<HTMLInputElement>(null);
+  const [draggingImages, setDraggingImages] = useState(false);
 
   const closeDialog = () => {
     setDialog(null);
@@ -248,6 +263,20 @@ export function DatasetHome(props: {
   };
   const chooseArchive = (file?: File) => {
     if (file) setArchive(file);
+  };
+  const closeUpload = () => {
+    setUploadTarget(undefined);
+    setUploadFiles([]);
+    setUploadSplit("train");
+    setDraggingImages(false);
+  };
+  const chooseImages = (files?: FileList | File[]) => {
+    if (files) setUploadFiles(Array.from(files));
+  };
+  const startUpload = () => {
+    if (!uploadTarget || !uploadFiles.length) return;
+    props.onUpload(uploadTarget, uploadFiles, uploadSplit);
+    closeUpload();
   };
   const openExport = (dataset: Dataset) => {
     setExportTarget(dataset);
@@ -285,7 +314,7 @@ export function DatasetHome(props: {
       <div className="section-title-row"><div><span className="eyebrow">ALL DATASETS</span><h2>所有数据集</h2></div><span className="dataset-total">{props.datasets.length} 个数据集</span></div>
       <div className="dataset-grid">
         {props.datasets.map((dataset, index) => <article key={dataset.id} className="dataset-card">
-          <header><span className={`dataset-icon tone-${index % 3}`}>{dataset.task_type === "segment" || dataset.task_type === "obb" ? "◇" : dataset.task_type === "classify" ? "○" : "□"}</span><div><h2>{dataset.name}</h2><small>{taskDescription(dataset.task_type)}</small></div><span className="status ready">就绪</span></header>
+          <header><span className={`dataset-icon tone-${index % 3}`}>{dataset.task_type === "segment" || dataset.task_type === "obb" ? "◇" : dataset.task_type === "classify" ? "○" : "□"}</span><div><h2>{dataset.name}</h2><small>{taskDescription(dataset.task_type)}</small></div><div className="dataset-card-header-actions"><span className="status ready">就绪</span><button className="dataset-add-image-action" disabled={props.busy} onClick={() => setUploadTarget(dataset)}>+ 添加图片</button></div></header>
           <div className="dataset-metrics"><span><small>图片</small><strong>{dataset.image_count.toLocaleString()}</strong></span><span><small>类别</small><strong>{dataset.class_count.toLocaleString()}</strong></span></div>
           <div className="dataset-progress"><span>标注进度</span><strong>{dataset.image_count ? `${Math.round(dataset.annotated_image_count / dataset.image_count * 100)}%` : "等待导入"}</strong></div>
           <div className="progress-track"><i style={{ width: `${dataset.image_count ? dataset.annotated_image_count / dataset.image_count * 100 : 0}%` }} /></div>
@@ -313,6 +342,15 @@ export function DatasetHome(props: {
         <div className="exchange-fields"><label>数据集名称<input value={name} placeholder={dialog === "import" ? "例如：road-signs" : "例如：my-dataset"} onChange={(event) => setName(event.target.value)} autoFocus /></label><label>任务类型<select value={taskType} onChange={(event) => setTaskType(event.target.value as TaskType)}><option value="detect">目标检测（Bounding Box）</option><option value="segment">实例分割（Polygon / SAM）</option><option value="obb">旋转框（OBB）</option><option value="classify">图像分类</option></select></label></div>
         {dialog === "import" && <><input ref={fileRef} type="file" accept=".zip,application/zip" hidden onChange={(event) => chooseArchive(event.target.files?.[0])} /><button className={draggingArchive ? "exchange-dropzone dragging" : "exchange-dropzone"} onClick={() => fileRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDraggingArchive(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDraggingArchive(false)} onDrop={(event) => { event.preventDefault(); setDraggingArchive(false); chooseArchive(event.dataTransfer.files[0]); }}><span className="exchange-dropzone-icon">⇧</span><strong>{archive?.name ?? `拖放或选择 ${format.toUpperCase()} ZIP 文件`}</strong><small>{archive ? `${Math.ceil(archive.size / 1024)} KB · 已准备导入` : format === "yolo" ? "ZIP 内应包含 data.yaml、images 和 labels" : "ZIP 内应包含 annotations.json/instances.json 与 images"}</small></button></>}
         <footer className="data-exchange-footer"><span>{dialog === "import" ? "文件仅导入到本机受管数据目录。" : "创建后可从卡片继续导入图片或已有数据集。"}</span><div><button className="button" onClick={closeDialog}>取消</button><button className="button primary" disabled={props.busy || !name.trim() || (dialog === "import" && !archive)} onClick={dialog === "create" ? create : importArchive}>{dialog === "create" ? "创建数据集" : "开始导入"}</button></div></footer>
+      </section>
+    </div>}
+    {uploadTarget && <div className="modal-backdrop data-exchange-backdrop" role="presentation" onMouseDown={closeUpload}>
+      <section className="dataset-dialog data-exchange-dialog" role="dialog" aria-modal="true" aria-labelledby="dataset-upload-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="data-exchange-header"><div><span className="eyebrow">ADD IMAGES</span><h2 id="dataset-upload-dialog-title">添加图片到“{uploadTarget.name}”</h2><p>选择多张图片并指定 split，图片会进入当前本地数据集。</p></div><button className="icon-button" onClick={closeUpload} aria-label="关闭">×</button></header>
+        <div className="upload-options"><label>导入到 split<select value={uploadSplit} onChange={(event) => setUploadSplit(event.target.value as SplitName)}><option value="train">train · 训练集</option><option value="val">val · 验证集</option><option value="test">test · 测试集</option></select></label></div>
+        <input ref={uploadFileRef} type="file" accept="image/*" multiple hidden onChange={(event) => { chooseImages(event.target.files ?? undefined); event.currentTarget.value = ""; }} />
+        <button className={draggingImages ? "exchange-dropzone dragging" : "exchange-dropzone"} onClick={() => uploadFileRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDraggingImages(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDraggingImages(false)} onDrop={(event) => { event.preventDefault(); setDraggingImages(false); chooseImages(event.dataTransfer.files); }}><span className="exchange-dropzone-icon">⇧</span><strong>{uploadFiles.length ? `已选择 ${uploadFiles.length} 张图片` : "拖放或选择图片"}</strong><small>{uploadFiles.length ? uploadFiles.slice(0, 3).map((file) => file.name).join("、") + (uploadFiles.length > 3 ? ` 等 ${uploadFiles.length} 张` : "") : "支持 JPG、PNG、WEBP 等常见图片格式，可多选"}</small></button>
+        <footer className="data-exchange-footer"><span>原图会复制到受管数据目录，现有标注不会受影响。</span><div><button className="button" onClick={closeUpload}>取消</button><button className="button primary" disabled={props.busy || !uploadFiles.length} onClick={startUpload}>添加 {uploadFiles.length || ""} 张图片</button></div></footer>
       </section>
     </div>}
     {exportTarget && <div className="modal-backdrop data-exchange-backdrop" role="presentation" onMouseDown={() => setExportTarget(undefined)}>

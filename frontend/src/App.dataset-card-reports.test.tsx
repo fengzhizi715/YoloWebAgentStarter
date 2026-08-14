@@ -32,7 +32,7 @@ describe("DatasetHome card reports", () => {
     const onValidate = vi.fn().mockResolvedValue(validation);
     const onQuality = vi.fn().mockResolvedValue(quality);
     await act(async () => {
-      root?.render(<DatasetHome datasets={[dataset]} busy={false} onCreate={vi.fn()} onImport={vi.fn()} onValidate={onValidate} onQuality={onQuality} onContinueAnnotation={vi.fn()} onTrain={vi.fn()} onDuplicates={vi.fn().mockResolvedValue(duplicates)} onDelete={vi.fn()} />);
+      root?.render(<DatasetHome datasets={[dataset]} busy={false} onCreate={vi.fn()} onImport={vi.fn()} onValidate={onValidate} onQuality={onQuality} onContinueAnnotation={vi.fn()} onUpload={vi.fn()} onTrain={vi.fn()} onDuplicates={vi.fn().mockResolvedValue(duplicates)} onDelete={vi.fn()} />);
     });
     const button = (label: string) => Array.from(container?.querySelectorAll<HTMLButtonElement>("button") ?? []).find((item) => item.textContent === label);
 
@@ -52,7 +52,7 @@ describe("DatasetHome card reports", () => {
     const onTrain = vi.fn();
     const onDuplicates = vi.fn().mockResolvedValue(duplicates);
     await act(async () => {
-      root?.render(<DatasetHome datasets={[dataset]} busy={false} onCreate={vi.fn()} onImport={vi.fn()} onValidate={vi.fn()} onQuality={vi.fn()} onContinueAnnotation={onContinueAnnotation} onTrain={onTrain} onDuplicates={onDuplicates} onDelete={vi.fn()} />);
+      root?.render(<DatasetHome datasets={[dataset]} busy={false} onCreate={vi.fn()} onImport={vi.fn()} onValidate={vi.fn()} onQuality={vi.fn()} onContinueAnnotation={onContinueAnnotation} onUpload={vi.fn()} onTrain={onTrain} onDuplicates={onDuplicates} onDelete={vi.fn()} />);
     });
     expect(container?.textContent).toContain("50%");
     act(() => Array.from(container?.querySelectorAll<HTMLButtonElement>("button") ?? []).find((item) => item.textContent === "继续标注")?.click());

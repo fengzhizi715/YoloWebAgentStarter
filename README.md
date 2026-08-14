@@ -118,7 +118,7 @@ npm --prefix frontend install
 | `YWA_SAM_DEVICE` | `auto` | SAM 设备请求，例如 `mps` 或 `cpu` |
 | `YWA_SAM_IMGSZ` | `1024` | SAM 推理尺寸；设置页保存的值优先于环境默认值 |
 
-设置页的 SAM 配置保存在 `YWA_DATA_DIR/settings.json`，语言偏好只保存在浏览器 localStorage；运行日志保存在 `YWA_DATA_DIR/logs/backend.log`。
+设置页的 SAM 配置保存在 `YWA_DATA_DIR/settings.json`，语言偏好只保存在浏览器 localStorage；运行日志保存在 `YWA_DATA_DIR/logs/backend.log`，按 2 MiB 轮转并保留 3 个备份。
 
 不可信 YOLO ZIP 在写入前会检查最多 2,000 个成员、单成员 100 MiB、总解压量 250 MiB 和 100:1 压缩比；图片逐成员流式写入受管目录。目录扫描会拒绝导入根目录外路径和逃逸的软链接。
 

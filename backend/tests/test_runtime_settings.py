@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
+from logging.handlers import RotatingFileHandler
 
 from app.core.errors import ValidationError
+from app.logs.service import RUNTIME_LOG_BACKUP_COUNT, RUNTIME_LOG_MAX_BYTES
 from app.training.config import build_training_command
 from app.training.runtime.device_service import DeviceService, TrainingDevice
 from app.core.task_types import TaskType
@@ -33,6 +36,24 @@ def test_sam_settings_are_persisted_in_starter_data_dir(client):
     assert reloaded["fallback_mode"] == "disabled"
     settings_path = client.app.state.settings.data_dir / "settings.json"
     assert json.loads(settings_path.read_text(encoding="utf-8"))["sam"]["model"] == "sam_b.pt"
+
+
+def test_sam_settings_update_clears_cached_model(monkeypatch, client):
+    from app.sam import service as sam_service
+
+    cleared = 0
+
+    def clear() -> None:
+        nonlocal cleared
+        cleared += 1
+
+    monkeypatch.setattr(sam_service, "clear_model_cache", clear)
+    response = client.put(
+        "/api/settings/sam",
+        json={"enabled": True, "model": "sam_b.pt", "device": "cpu", "img_size": 1024, "fallback_mode": "box"},
+    )
+    assert response.status_code == 200, response.text
+    assert cleared == 1
 
 
 def test_training_devices_and_multi_gpu_command(monkeypatch, client):
@@ -80,3 +101,8 @@ def test_runtime_logs_endpoint_returns_startup_log(client):
     filtered = client.get("/api/logs/runtime?lines=20&level=INFO")
     assert filtered.status_code == 200
     assert all(" INFO " in line for line in filtered.json()["lines"])
+
+    handler = next(handler for handler in logging.getLogger().handlers if getattr(handler, "_ywa_runtime_log", False))
+    assert isinstance(handler, RotatingFileHandler)
+    assert handler.maxBytes == RUNTIME_LOG_MAX_BYTES
+    assert handler.backupCount == RUNTIME_LOG_BACKUP_COUNT

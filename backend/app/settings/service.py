@@ -49,6 +49,12 @@ class SamSettingsService:
             "fallback_mode": payload.fallback_mode,
         }
         self._write(data)
+        # Import lazily to keep the settings and SAM domains acyclic at
+        # module-load time. Dropping the old model is important on CUDA hosts
+        # where its weights may otherwise remain resident after a setting edit.
+        from app.sam.service import clear_model_cache
+
+        clear_model_cache()
         return self.get()
 
     def _read(self) -> dict:

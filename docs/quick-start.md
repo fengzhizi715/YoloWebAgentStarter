@@ -58,7 +58,7 @@ Use the left sidebar's Logs page to inspect the bounded tail of the local backen
 | `YWA_SAM_DEVICE` | `auto` | SAM inference device request; responses report the resolved device when Ultralytics exposes it |
 | `YWA_SAM_IMGSZ` | `1024` | SAM inference image size |
 
-The SAM settings page persists to `YWA_DATA_DIR/settings.json`; runtime logs are stored in `YWA_DATA_DIR/logs/backend.log`.
+The SAM settings page persists to `YWA_DATA_DIR/settings.json`; runtime logs are stored in `YWA_DATA_DIR/logs/backend.log`, rotate at 2 MiB, and retain three backups.
 
 Never point the database, import directory, or model registry at an Enterprise checkout.
 

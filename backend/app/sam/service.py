@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import threading
+from gc import collect
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -19,7 +20,7 @@ from app.settings.service import SamSettingsService
 
 
 _MODEL_LOCK = threading.Lock()
-_MODELS: dict[tuple[str, str, int], object] = {}
+_MODELS: dict[tuple[str, str], object] = {}
 
 
 def _box_polygon(box: BBox) -> list[tuple[float, float]]:
@@ -31,12 +32,31 @@ def _box_polygon(box: BBox) -> list[tuple[float, float]]:
     ]
 
 
-def _model_for(model_reference: str, device: str, img_size: int) -> object:
-    key = (model_reference, device, img_size)
+def clear_model_cache() -> None:
+    """Release cached SAM models after a local SAM configuration change."""
+
+    with _MODEL_LOCK:
+        _MODELS.clear()
+    collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except (ImportError, OSError, AttributeError, RuntimeError):
+        pass
+
+
+def _model_for(model_reference: str, device: str) -> object:
+    key = (model_reference, device)
     with _MODEL_LOCK:
         model = _MODELS.get(key)
         if model is not None:
             return model
+        # The application supports one interactive SAM configuration at a
+        # time. Retaining past checkpoints here would keep their CPU/GPU
+        # allocations alive after the user switches settings.
+        _MODELS.clear()
         try:
             from ultralytics import SAM
 
@@ -55,7 +75,7 @@ def _predict_with_sam(
     img_size: int,
 ) -> tuple[list[tuple[float, float]], float, str | None]:
     try:
-        model = _model_for(model_reference, device, img_size)
+        model = _model_for(model_reference, device)
     except TypeError as exc:
         # Keep the small helper easy to replace in tests and by local plugins
         # that still implement the original one-argument hook.

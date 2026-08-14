@@ -38,7 +38,7 @@ describe("DatasetHome delete flow", () => {
   it("requires confirmation before deleting a dataset", () => {
     const onDelete = vi.fn();
     act(() => {
-      root?.render(<DatasetHome datasets={[dataset]} busy={false} onCreate={vi.fn()} onImport={vi.fn()} onValidate={vi.fn()} onQuality={vi.fn()} onContinueAnnotation={vi.fn()} onTrain={vi.fn()} onDuplicates={vi.fn()} onDelete={onDelete} />);
+      root?.render(<DatasetHome datasets={[dataset]} busy={false} onCreate={vi.fn()} onImport={vi.fn()} onValidate={vi.fn()} onQuality={vi.fn()} onContinueAnnotation={vi.fn()} onUpload={vi.fn()} onTrain={vi.fn()} onDuplicates={vi.fn()} onDelete={onDelete} />);
     });
 
     const button = (label: string) => Array.from(container?.querySelectorAll<HTMLButtonElement>("button") ?? []).find((item) => item.textContent === label);
