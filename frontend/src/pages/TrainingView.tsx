@@ -1,5 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { api } from "../api/client";
+import { TrainingActiveRunCard, liveMetricsFromTask } from "../components/training/TrainingActiveRunCard";
+import { TrainingComputeRail } from "../components/training/TrainingComputeRail";
+import { TrainingConfigPanel } from "../components/training/TrainingConfigPanel";
+import { TrainingHistoryGrid } from "../components/training/TrainingHistoryGrid";
+import { TrainingTaskDetailCard } from "../components/training/TrainingTaskDetailCard";
+import {
+  PRESETS,
+  applyTaskToForm,
+  defaultForm,
+  defaultModelFor,
+  estimateMinutes,
+  pickPreset,
+  resolveDeviceString,
+  taskTypeLabel,
+  type HistoryFilter,
+  type PresetId,
+  type TrainingFormState,
+} from "../training/helpers";
+import { formatEtaSeconds, parseTrainingLogs } from "../training/trainingLogParse";
 import type { Dataset, TaskType, TrainingDevice, TrainingLog, TrainingSummary, TrainingTask } from "../types";
 
 interface Props {
@@ -7,32 +26,58 @@ interface Props {
   dataset: Dataset;
   onDatasetChange: (dataset: Dataset) => void;
   onBack: () => void;
+  onOpenModels?: () => void;
 }
 
-export function TrainingView({ datasets, dataset, onDatasetChange, onBack }: Props) {
-  const defaultModel = defaultModelFor(dataset.task_type);
+const DRAFT_KEY = "ywa.training.draft";
+
+export function TrainingView({ datasets, dataset, onDatasetChange, onBack, onOpenModels }: Props) {
   const [tasks, setTasks] = useState<TrainingTask[]>([]);
-  const [selectedTask, setSelectedTask] = useState<TrainingTask>();
+  const [detailTaskId, setDetailTaskId] = useState<string>();
   const [logs, setLogs] = useState<TrainingLog>();
   const [summary, setSummary] = useState<TrainingSummary>();
-  const [name, setName] = useState("local-training");
-  const [model, setModel] = useState(defaultModel);
-  const [epochs, setEpochs] = useState(50);
-  const [imgSize, setImgSize] = useState(640);
-  const [batchSize, setBatchSize] = useState(16);
-  const [device, setDevice] = useState("auto");
+  const [form, setForm] = useState<TrainingFormState>(() => defaultForm(dataset.task_type));
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [devices, setDevices] = useState<TrainingDevice[]>([]);
-  const [gpuMode, setGpuMode] = useState<"single" | "multi">("single");
-  const [gpuIds, setGpuIds] = useState<string[]>([]);
-  const [workers, setWorkers] = useState(2);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [splitRecovery, setSplitRecovery] = useState(false);
+  const [expSearch, setExpSearch] = useState("");
+  const [expFilter, setExpFilter] = useState<HistoryFilter>("all");
+
+  const preset = pickPreset(form);
+  const activeTask = useMemo(
+    () => tasks.find((task) => task.status === "running" || task.status === "pending"),
+    [tasks],
+  );
+  const historyTasks = useMemo(
+    () => tasks.filter((task) => task.id !== activeTask?.id),
+    [tasks, activeTask],
+  );
+  const detailTask = useMemo(
+    () => tasks.find((task) => task.id === detailTaskId) ?? (detailTaskId ? activeTask : undefined),
+    [tasks, detailTaskId, activeTask],
+  );
+
+  const filteredHistory = useMemo(() => {
+    const q = expSearch.trim().toLowerCase();
+    return historyTasks
+      .filter((task) => {
+        if (expFilter === "completed" && task.status !== "completed") return false;
+        if (expFilter === "failed" && task.status !== "failed") return false;
+        if (expFilter === "stopped" && task.status !== "stopped") return false;
+        if (!q) return true;
+        return task.name.toLowerCase().includes(q)
+          || task.model_name.toLowerCase().includes(q)
+          || task.device.toLowerCase().includes(q);
+      })
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  }, [historyTasks, expSearch, expFilter]);
 
   const refresh = useCallback(async () => {
     const result = await api.listTrainingTasks(dataset.id);
     setTasks(result.items);
-    setSelectedTask((current) => result.items.find((item) => item.id === current?.id) ?? result.items[0]);
   }, [dataset.id]);
 
   useEffect(() => {
@@ -43,34 +88,50 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onBack }: Pro
     if (typeof api.listTrainingDevices !== "function") return;
     api.listTrainingDevices().then((result) => {
       setDevices(result.items);
-      const first = result.items.find((item) => item.type === "cuda" && item.index !== null);
-      if (first && !gpuIds.length) setGpuIds([String(first.index)]);
+      setForm((prev) => {
+        if (prev.gpu_ids.length) return prev;
+        const first = result.items.find((item) => item.type === "cuda" && item.index !== null);
+        return first ? { ...prev, gpu_ids: [String(first.index)] } : prev;
+      });
     }).catch((reason) => setError(errorMessage(reason)));
   }, []);
 
   useEffect(() => {
-    setModel(defaultModelFor(dataset.task_type));
-    setSelectedTask(undefined);
+    setForm(defaultForm(dataset.task_type));
+    setDetailTaskId(undefined);
     setLogs(undefined);
     setSummary(undefined);
+    setError("");
+    setNotice("");
+    setSplitRecovery(false);
   }, [dataset.id, dataset.task_type]);
 
   useEffect(() => {
-    const active = selectedTask && (selectedTask.status === "pending" || selectedTask.status === "running");
-    if (!active) return;
+    if (!activeTask) return;
     const timer = window.setInterval(() => refresh().catch((reason) => setError(errorMessage(reason))), 1500);
     return () => window.clearInterval(timer);
-  }, [refresh, selectedTask]);
+  }, [refresh, activeTask?.id, activeTask?.status]);
 
   useEffect(() => {
-    if (!selectedTask) { setLogs(undefined); setSummary(undefined); return; }
-    const taskId = selectedTask.id;
-    const active = selectedTask.status === "pending" || selectedTask.status === "running";
+    const task = detailTask ?? activeTask;
+    if (!task) {
+      setLogs(undefined);
+      setSummary(undefined);
+      return;
+    }
+    const taskId = task.id;
+    const active = task.status === "pending" || task.status === "running";
     let cancelled = false;
     const loadDetail = async () => {
       try {
-        const [nextLogs, nextSummary] = await Promise.all([api.getTrainingLogs(taskId), api.getTrainingSummary(taskId)]);
-        if (!cancelled) { setLogs(nextLogs); setSummary(nextSummary); }
+        const [nextLogs, nextSummary] = await Promise.all([
+          api.getTrainingLogs(taskId),
+          api.getTrainingSummary(taskId),
+        ]);
+        if (!cancelled) {
+          setLogs(nextLogs);
+          setSummary(nextSummary);
+        }
       } catch (reason) {
         if (!cancelled) setError(errorMessage(reason));
       }
@@ -79,114 +140,256 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onBack }: Pro
     if (!active) return () => { cancelled = true; };
     const timer = window.setInterval(() => void loadDetail(), 2500);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [selectedTask?.id, selectedTask?.status]);
+  }, [detailTask?.id, detailTask?.status, activeTask?.id, activeTask?.status]);
 
-  const start = async () => {
-    setBusy(true); setError(""); setSplitRecovery(false);
+  const applyPreset = (id: PresetId) => {
+    const next = PRESETS[id];
+    setForm((prev) => ({
+      ...prev,
+      epochs: next.epochs,
+      batch_size: next.batch_size,
+      img_size: next.img_size,
+      patience: String(next.patience),
+      model: prev.model || defaultModelFor(dataset.task_type),
+    }));
+  };
+
+  const canSubmit = !(form.device_type === "cuda" && (!form.gpu_ids.length || (form.compute_mode === "multi" && form.gpu_ids.length < 2)));
+
+  const riskText = dataset.image_count < 2
+    ? "图片不足 2 张时无法同时构成 train / val，创建任务可能失败。"
+    : `将使用已持久化的 split 训练 ${taskTypeLabel(dataset.task_type)} 模型；请确认 train 与 val 均非空。`;
+
+  const summaryBottomBar = `${form.model} · ${form.epochs} ep · batch ${form.batch_size} · ${form.img_size}px · ${resolveDeviceString(form)} · 约 ${estimateMinutes(form.epochs, dataset.image_count, form.batch_size, form.device_type === "cuda" ? Math.max(form.gpu_ids.length, 1) : 1)} 分钟`;
+
+  const start = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setNotice("");
+    setSplitRecovery(false);
     try {
-      const selectedDevice = device === "cuda" ? (gpuIds.join(",") || "0") : device;
-      const task = await api.createTrainingTask({ dataset_id: dataset.id, name: name.trim() || "local-training", model, task_type: dataset.task_type as TaskType, epochs, img_size: imgSize, batch_size: batchSize, device: selectedDevice, workers, seed: 42 });
+      const patience = form.patience.trim() ? Number(form.patience) : undefined;
+      const lr0 = form.lr0.trim() ? Number(form.lr0) : undefined;
+      const task = await api.createTrainingTask({
+        dataset_id: dataset.id,
+        name: form.name.trim() || "local-training",
+        model: form.model.trim() || defaultModelFor(dataset.task_type),
+        task_type: dataset.task_type as TaskType,
+        epochs: form.epochs,
+        img_size: form.img_size,
+        batch_size: form.batch_size,
+        device: resolveDeviceString(form),
+        workers: form.workers,
+        seed: form.seed,
+        val_ratio: form.val_ratio,
+        optimizer: form.optimizer.trim() || undefined,
+        lr0: Number.isFinite(lr0) ? lr0 : undefined,
+        patience: Number.isFinite(patience) ? patience : undefined,
+      });
       setTasks((items) => [task, ...items]);
-      setSelectedTask(task);
+      setDetailTaskId(task.id);
+      setNotice("训练任务已创建并进入队列。");
     } catch (reason) {
       const message = errorMessage(reason);
       setError(message);
       setSplitRecovery(message.includes("at least one train image and one val image"));
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const autoSplitForTraining = async () => {
-    setBusy(true); setError("");
+    setBusy(true);
+    setError("");
     try {
       const result = await api.autoSplitImages(dataset.id, { train_ratio: 0.8, val_ratio: 0.2, test_ratio: 0, seed: 42 });
       setSplitRecovery(false);
       setError(`已按 80/20 分配 ${result.updated} 张图片：train ${result.split_counts.train}，val ${result.split_counts.val}。现在可以重新创建训练。`);
-    } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
-  };
-
-  const stop = async () => {
-    if (!selectedTask) return;
-    setBusy(true);
-    try { setSelectedTask(await api.stopTrainingTask(selectedTask.id)); await refresh(); } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
-  };
-
-  const resume = async () => {
-    if (!selectedTask) return;
-    setBusy(true); setError("");
-    try {
-      const restoreEpochState = selectedTask.status !== "completed";
-      const task = await api.resumeTrainingTask(selectedTask.id, restoreEpochState ? { resume_epoch: true } : { epochs, resume_epoch: false });
-      setTasks((items) => [task, ...items]); setSelectedTask(task);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
     }
-    catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
 
-  const checkpointLinks = useMemo(() => selectedTask ? { best: api.downloadCheckpointUrl(selectedTask.id, "best"), last: api.downloadCheckpointUrl(selectedTask.id, "last") } : undefined, [selectedTask]);
+  const stop = async (taskId: string) => {
+    setBusy(true);
+    try {
+      await api.stopTrainingTask(taskId);
+      await refresh();
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resume = async (task: TrainingTask) => {
+    setBusy(true);
+    setError("");
+    try {
+      const restoreEpochState = task.status !== "completed";
+      const next = await api.resumeTrainingTask(task.id, restoreEpochState ? { resume_epoch: true } : { epochs: form.epochs, resume_epoch: false });
+      setTasks((items) => [next, ...items]);
+      setDetailTaskId(next.id);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveDraft = () => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ datasetId: dataset.id, form }));
+      setNotice("草稿配置已保存到本机浏览器。");
+    } catch {
+      setError("无法写入本地草稿。");
+    }
+  };
+
+  const parsedLive = useMemo(
+    () => parseTrainingLogs(logs?.task_id === activeTask?.id ? (logs?.logs ?? "") : "", activeTask?.epochs ?? 0),
+    [logs, activeTask?.id, activeTask?.epochs],
+  );
+  const activeLive = activeTask
+    ? liveMetricsFromTask(
+      activeTask,
+      parsedLive,
+      summary?.task_id === activeTask.id ? (typeof summary.metrics.map50 === "number" ? summary.metrics.map50 : undefined) : undefined,
+    )
+    : undefined;
+  const liveEta = (() => {
+    if (!activeTask || !activeLive) return "—";
+    const remaining = Math.max(activeTask.epochs - activeLive.liveEpoch, 0);
+    if (!remaining) return "即将完成";
+    const perEpochSec = 45;
+    return formatEtaSeconds(remaining * perEpochSec);
+  })();
+
   return (
-    <main className="training-layout">
-      <div className="training-head">
-        <button className="button" onClick={onBack}>← 返回数据集</button>
-        <div><span className="eyebrow">LOCAL TRAINING / {dataset.task_type}</span><h1>{dataset.name}</h1><p className="muted">复用已保存的 train / val / test split，在本机运行 Ultralytics YOLO。</p></div>
+    <main className="training-layout training-workspace-page">
+      <header className="training-page-header">
+        <div className="training-page-header-main">
+          <button className="button training-back-btn" onClick={onBack}>
+            ← 返回数据集
+          </button>
+          <div>
+            <span className="eyebrow">LOCAL TRAINING / {dataset.task_type.toUpperCase()}</span>
+            <h1>训练工作区</h1>
+            <p className="muted">复用已保存的 train / val / test split，在本机运行 Ultralytics YOLO。</p>
+          </div>
+        </div>
+        <div className="training-page-header-meta" aria-label="当前数据集摘要">
+          <span className="training-chip"><strong>{dataset.name}</strong></span>
+          <span className="training-chip">{dataset.image_count} 张图片</span>
+          <span className="training-chip">{dataset.class_count} 类</span>
+          <span className="training-chip training-chip--accent">{taskTypeLabel(dataset.task_type)}</span>
+        </div>
+      </header>
+
+      {notice && <p className="training-workspace-notice">{notice}</p>}
+      {error && (
+        <div className={`validation ${splitRecovery ? "invalid" : "valid"}`}>
+          <strong>{splitRecovery ? "训练尚未创建" : "提示"}</strong>
+          <span>{error}</span>
+          {splitRecovery && (
+            <div className="training-split-recovery">
+              <small>这会重新分配该数据集全部图片的持久化 split；请确认当前 split 不需要保留。</small>
+              <button className="button" disabled={busy || dataset.image_count < 2} onClick={() => void autoSplitForTraining()}>
+                自动分配 train / val
+              </button>
+              {dataset.image_count < 2 && <small>至少需要两张图片，才能同时创建 train 与 val split。</small>}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="training-dataset-grid">
+        <div className="training-dataset-main training-workspace">
+          <TrainingConfigPanel
+            datasets={datasets}
+            dataset={dataset}
+            form={form}
+            preset={preset}
+            advancedOpen={advancedOpen}
+            summaryBottomBar={summaryBottomBar}
+            onDatasetChange={onDatasetChange}
+            onFormChange={setForm}
+            onPreset={applyPreset}
+            onAdvancedOpenChange={setAdvancedOpen}
+            onSubmit={(event) => void start(event)}
+          />
+
+          {activeTask && activeLive && (
+            <TrainingActiveRunCard
+              task={activeTask}
+              liveEpoch={activeLive.liveEpoch}
+              liveProgressPct={activeLive.liveProgressPct}
+              liveLoss={activeLive.liveLoss}
+              liveEta={liveEta}
+              liveMap50={activeLive.liveMap50}
+              parsedLive={parsedLive}
+              busy={busy}
+              onStop={() => void stop(activeTask.id)}
+              onOpenDetail={() => {
+                setDetailTaskId(activeTask.id);
+                window.requestAnimationFrame(() => document.getElementById("training-task-detail")?.scrollIntoView({ behavior: "smooth" }));
+              }}
+            />
+          )}
+
+          <TrainingHistoryGrid
+            historyTasks={historyTasks}
+            filteredHistory={filteredHistory}
+            selectedTaskId={detailTaskId}
+            expSearch={expSearch}
+            expFilter={expFilter}
+            onSearchChange={setExpSearch}
+            onFilterChange={setExpFilter}
+            onApplyTask={(task) => {
+              setForm(applyTaskToForm(task));
+              setAdvancedOpen(true);
+              setNotice(`已填入「${task.name}」的配置，可直接调整后提交。`);
+              document.getElementById("training-config-anchor")?.scrollIntoView({ behavior: "smooth" });
+            }}
+            onOpenDetail={(task) => {
+              setDetailTaskId(task.id);
+              window.requestAnimationFrame(() => document.getElementById("training-task-detail")?.scrollIntoView({ behavior: "smooth" }));
+            }}
+            onOpenModels={onOpenModels}
+            onScrollToConfig={() => document.getElementById("training-config-anchor")?.scrollIntoView({ behavior: "smooth" })}
+          />
+
+          {detailTask && (
+            <TrainingTaskDetailCard
+              task={detailTask}
+              summary={summary?.task_id === detailTask.id ? summary : undefined}
+              logs={logs?.task_id === detailTask.id ? logs.logs : undefined}
+              busy={busy}
+              onClose={() => setDetailTaskId(undefined)}
+              onStop={() => void stop(detailTask.id)}
+              onResume={() => void resume(detailTask)}
+            />
+          )}
+        </div>
+
+        <TrainingComputeRail
+          dataset={dataset}
+          form={form}
+          devices={devices}
+          busy={busy}
+          canSubmit={canSubmit}
+          riskText={riskText}
+          onFormChange={setForm}
+          onSaveDraft={saveDraft}
+        />
       </div>
-      {error && <div className={`validation ${splitRecovery ? "invalid" : "valid"}`}><strong>{splitRecovery ? "训练尚未创建" : "训练数据已准备"}</strong><span>{error}</span>{splitRecovery && <div className="training-split-recovery"><small>这会重新分配该数据集全部图片的持久化 split；请确认当前 split 不需要保留。</small><button className="button" disabled={busy || dataset.image_count < 2} onClick={() => void autoSplitForTraining()}>自动分配 train / val</button>{dataset.image_count < 2 && <small>至少需要两张图片，才能同时创建 train 与 val split。</small>}</div>}</div>}
-      <div className="training-grid">
-        <section className="panel training-form">
-          <span className="eyebrow">NEW TRAINING TASK</span><h2>训练配置</h2>
-          <p className="hint">模型权重族必须和数据集任务匹配；首次运行可能需要下载 Ultralytics 权重。</p>
-          <label>训练数据集<select value={dataset.id} onChange={(event) => { const next = datasets.find((item) => item.id === event.target.value); if (next) onDatasetChange(next); }}>{datasets.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.task_type} · {item.image_count} 张图片</option>)}</select></label>
-          <label>任务名称<input value={name} onChange={(event) => setName(event.target.value)} /></label>
-          <label>基础权重<input value={model} onChange={(event) => setModel(event.target.value)} /><small>建议使用 {defaultModelFor(dataset.task_type)}</small></label>
-          <div className="form-row"><label>Epochs<input type="number" min={1} value={epochs} onChange={(event) => setEpochs(Number(event.target.value))} /></label><label>Batch<input type="number" min={1} value={batchSize} onChange={(event) => setBatchSize(Number(event.target.value))} /></label></div>
-          <div className="form-row"><label>Image size<input type="number" min={32} step={32} value={imgSize} onChange={(event) => setImgSize(Number(event.target.value))} /></label><label>Workers<input type="number" min={0} value={workers} onChange={(event) => setWorkers(Number(event.target.value))} /></label></div>
-          <label>Device<select value={device} onChange={(event) => { const next = event.target.value; setDevice(next); if (next === "cuda" && !gpuIds.length) { const first = devices.find((item) => item.type === "cuda"); if (first?.index !== null && first?.index !== undefined) setGpuIds([String(first.index)]); } }}><option value="auto">auto（CUDA → MPS → CPU）</option><option value="cpu">cpu</option>{devices.some((item) => item.type === "mps") && <option value="mps">mps</option>}{devices.some((item) => item.type === "cuda") && <option value="cuda">CUDA</option>}</select></label>
-          {device === "cuda" && <GpuPicker devices={devices} mode={gpuMode} selectedIds={gpuIds} onModeChange={setGpuMode} onIdsChange={setGpuIds} />}
-          <button className="button primary wide" disabled={busy || (device === "cuda" && (!gpuIds.length || (gpuMode === "multi" && gpuIds.length < 2)))} onClick={start}>创建并运行训练</button>
-        </section>
-        <section className="panel task-panel"><div className="panel-heading"><div><span className="eyebrow">TASK QUEUE</span><h2>训练任务</h2></div><span className="count-badge">{tasks.length}</span></div><div className="task-list">{tasks.map((task) => <button key={task.id} className={selectedTask?.id === task.id ? "task-item selected" : "task-item"} onClick={() => setSelectedTask(task)}><div><strong>{task.name}</strong><small>{task.model_name} · {task.created_at.slice(0, 16).replace("T", " ")}</small></div><span className={`status ${task.status}`}>{statusLabel(task.status)}</span><div className="progress-line"><i style={{ width: `${task.progress_percent}%` }} /></div></button>)}{!tasks.length && <p className="muted">还没有训练任务。</p>}</div></section>
-      </div>
-      {selectedTask && <section className="panel training-detail">
-        <div className="detail-head"><div><span className="eyebrow">TASK DETAIL</span><h2>{selectedTask.name}</h2><p className="muted">{selectedTask.status} · {selectedTask.progress_epoch}/{selectedTask.progress_total_epochs || selectedTask.epochs} epochs · {selectedTask.progress_percent}%</p></div><div className="detail-actions">{selectedTask.status === "running" || selectedTask.status === "pending" ? <button className="button danger" disabled={busy} onClick={stop}>停止训练</button> : <><button className="button primary" disabled={busy || !selectedTask.last_model_path} onClick={resume}>{selectedTask.status === "completed" ? "从 last.pt 新任务继续训练" : "恢复中断训练"}</button>{checkpointLinks?.best && selectedTask.best_model_path && <a className="button" href={checkpointLinks.best}>下载 best.pt</a>}{checkpointLinks?.last && selectedTask.last_model_path && <a className="button" href={checkpointLinks.last}>下载 last.pt</a>}</>}</div></div>
-        {selectedTask.error_message && <div className="validation invalid"><span>{selectedTask.error_message}</span></div>}
-        <TrainingSummaryPanel summary={summary} />
-        <details className="config-snapshot"><summary>训练配置快照</summary><pre>{JSON.stringify(summary?.training_config ?? { model: selectedTask.model_name, epochs: selectedTask.epochs, img_size: selectedTask.img_size, batch_size: selectedTask.batch_size, device: selectedTask.device, workers: selectedTask.workers }, null, 2)}</pre></details>
-        <div className="log-box">{logs?.logs || "等待训练日志…"}</div>
-      </section>}
     </main>
   );
 }
 
-function statusLabel(status: TrainingTask["status"]): string { return ({ pending: "排队中", running: "运行中", completed: "已完成", failed: "失败", stopped: "已停止" })[status]; }
-function errorMessage(reason: unknown): string { return reason instanceof Error ? reason.message : "操作失败，请检查后端服务。"; }
-function defaultModelFor(taskType: TaskType): string { return ({ detect: "yolo11n.pt", segment: "yolo11n-seg.pt", obb: "yolo11n-obb.pt", classify: "yolo11n-cls.pt" })[taskType]; }
-
-function GpuPicker({ devices, mode, selectedIds, onModeChange, onIdsChange }: { devices: TrainingDevice[]; mode: "single" | "multi"; selectedIds: string[]; onModeChange: (mode: "single" | "multi") => void; onIdsChange: (ids: string[]) => void }) {
-  const cudaDevices = devices.filter((item) => item.type === "cuda");
-  const toggle = (id: string) => {
-    if (mode === "single") { onIdsChange([id]); return; }
-    onIdsChange(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
-  };
-  return <div className="gpu-picker">
-    <div className="gpu-mode-toggle"><button type="button" className={mode === "single" ? "active" : ""} onClick={() => { onModeChange("single"); onIdsChange(selectedIds.slice(0, 1)); }}>单 GPU</button><button type="button" className={mode === "multi" ? "active" : ""} onClick={() => onModeChange("multi")}>多 GPU</button></div>
-    <div className="gpu-list">
-      {cudaDevices.map((gpu) => {
-        const id = String(gpu.index ?? 0);
-        const checked = selectedIds.includes(id);
-        return (
-          <label key={gpu.id} className={checked ? "gpu-option selected" : "gpu-option"}>
-            <input type="checkbox" checked={checked} disabled={mode === "single" && checked} onChange={() => toggle(id)} />
-            <span><strong>GPU {id}</strong><small>{gpu.name}{gpu.memory_total_mb ? ` · ${Math.round(gpu.memory_total_mb / 1024)} GB` : ""}</small></span>
-          </label>
-        );
-      })}
-    </div>
-    <small>{"多 GPU 将以 device="}{selectedIds.join(",") || "0,1"}{" 交给 Ultralytics DDP。"}</small>
-  </div>;
+function errorMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : "操作失败，请检查后端服务。";
 }
-
-function TrainingSummaryPanel({ summary }: { summary?: TrainingSummary }) {
-  const value = (key: string) => typeof summary?.metrics[key] === "number" ? Number(summary.metrics[key]).toFixed(3) : "—";
-  const history = summary?.metrics.history ?? [];
-  const path = history.map((point, index) => `${index ? "L" : "M"}${index * (100 / Math.max(history.length - 1, 1))} ${72 - (point.map50 ?? 0) * 64}`).join(" ");
-  return <div className="training-result"><div className="metric-strip"><Metric label="mAP50" value={value("map50")} /><Metric label="mAP50-95" value={value("map50_95")} /><Metric label="Precision" value={value("precision")} /><Metric label="Recall" value={value("recall")} /></div>{history.length > 1 && <div className="metric-chart"><div><strong>mAP50 趋势</strong><small>{history.length} 个训练轮次</small></div><svg viewBox="0 0 100 80" preserveAspectRatio="none"><path d="M0 72H100" stroke="#dbe4ef" /><path d={path} fill="none" stroke="#3157d5" strokeWidth="2" vectorEffect="non-scaling-stroke" /></svg></div>}{summary?.risks.length ? <p className="hint">风险提示：{summary.risks.join("、")}</p> : null}</div>;
-}
-function Metric({ label, value }: { label: string; value: string }) { return <span><small>{label}</small><strong>{value}</strong></span>; }

@@ -115,8 +115,22 @@ export const api = {
   tileDataset: (datasetId: string, data: { name: string; description?: string; tile_size: number; overlap: number; keep_empty_tiles: boolean }) => request<{ dataset_id: string; source_dataset_id: string; generated_images: number; generated_annotations: number; skipped_empty_tiles: number }>(`/api/datasets/${datasetId}/tile`, json(data)),
   listTrainingTasks: (datasetId: string) => request<{ items: TrainingTask[] }>(`/api/training/tasks?dataset_id=${datasetId}`),
   listTrainingDevices: () => request<{ items: TrainingDevice[] }>("/api/training/devices"),
-  createTrainingTask: (payload: { dataset_id: string; name: string; model: string; task_type: TaskType; epochs: number; img_size: number; batch_size: number; device: string; workers: number; seed: number }) =>
-    request<TrainingTask>("/api/training/tasks", json(payload)),
+  createTrainingTask: (payload: {
+    dataset_id: string;
+    name: string;
+    model: string;
+    task_type: TaskType;
+    epochs: number;
+    img_size: number;
+    batch_size: number;
+    device: string;
+    workers: number;
+    seed: number;
+    val_ratio?: number;
+    optimizer?: string;
+    lr0?: number;
+    patience?: number;
+  }) => request<TrainingTask>("/api/training/tasks", json(payload)),
   stopTrainingTask: (taskId: string) => request<TrainingTask>(`/api/training/tasks/${taskId}/stop`, { method: "POST" }),
   resumeTrainingTask: (taskId: string, data: { name?: string; epochs?: number; resume_epoch?: boolean } = {}) => request<TrainingTask>(`/api/training/tasks/${taskId}/resume`, json(data)),
   getTrainingLogs: (taskId: string, tail = 200) => request<TrainingLog>(`/api/training/tasks/${taskId}/logs?tail=${tail}`),

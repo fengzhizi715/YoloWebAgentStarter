@@ -157,7 +157,7 @@ export default function App() {
           samCapabilities={samCapabilities}
         />
       ) : view === "training" && displayedDataset ? (
-        <TrainingView datasets={datasets} dataset={displayedDataset} onDatasetChange={(dataset) => void loadDataset(dataset, "training")} onBack={() => setView("workspace")} />
+        <TrainingView datasets={datasets} dataset={displayedDataset} onDatasetChange={(dataset) => void loadDataset(dataset, "training")} onBack={() => setView("workspace")} onOpenModels={() => setView("models")} />
       ) : view === "models" && displayedDataset ? (
         <ModelsView dataset={displayedDataset} onBack={() => setView("workspace")} />
       ) : view === "settings-sam" ? (
