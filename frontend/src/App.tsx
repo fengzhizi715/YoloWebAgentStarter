@@ -31,6 +31,7 @@ export default function App() {
   const refreshDatasets = async () => {
     const result = await api.listDatasets();
     setDatasets(result);
+    if (result.length > 0) setNotice("");
     if (selected) {
       const current = result.find((dataset) => dataset.id === selected.id);
       if (current) setSelected(current);
@@ -38,6 +39,7 @@ export default function App() {
   };
 
   const loadDataset = async (dataset: Dataset, nextView: View = "workspace") => {
+    setNotice("");
     setSelected(dataset);
     setView(nextView);
     setSelectedImage(undefined);
@@ -107,8 +109,10 @@ export default function App() {
   const displayedDataset = selected;
   const activeSection: StarterSection = view === "annotation" ? "workspace" : view === "settings-sam" || view === "settings-language" ? "settings" : view;
   const navigate = (section: StarterSection) => {
-    if (section === "training" && !selected && datasets[0]) {
-      void loadDataset(datasets[0], "training");
+    setNotice("");
+    setError("");
+    if ((section === "training" || section === "models") && !selected && datasets[0]) {
+      void loadDataset(datasets[0], section);
       return;
     }
     const globalSection = section === "settings" || section === "logs";
