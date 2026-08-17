@@ -150,4 +150,21 @@ describe("AnnotationCanvas OBB interactions", () => {
 
     expect(onChange).toHaveBeenCalledWith([{ class_id: "cls-1", type: "bbox", bbox: { x: 10, y: 10, width: 50, height: 40 }, source: "manual" }]);
   });
+
+  it("blocks drawing until a class is selected", async () => {
+    const onChange = vi.fn();
+    await act(async () => {
+      root?.render(<AnnotationCanvas image={image} classes={[]} annotations={[]} activeClassId="" taskType="detect" onChange={onChange} />);
+    });
+
+    const stage = container?.querySelector<HTMLDivElement>("[data-testid='stage']") as (HTMLDivElement & { getStage?: () => unknown; getClassName?: () => string; getPointerPosition?: () => { x: number; y: number } }) | null;
+    expect(container?.textContent).toContain("请先在右侧新增一个类别");
+    stage!.getStage = () => stage;
+    stage!.getClassName = () => "Stage";
+    stage!.getPointerPosition = () => ({ x: 10, y: 10 });
+    act(() => stage?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+    act(() => stage?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

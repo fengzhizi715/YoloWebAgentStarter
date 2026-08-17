@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { AnnotationCanvas, type AnnotationDraft } from "./annotation/AnnotationCanvas";
 import { api, apiUrl } from "./api/client";
 import { StarterShell, type StarterSection } from "./components/StarterShell";
@@ -46,7 +46,22 @@ export default function App() {
     const [nextClasses, nextImages] = await Promise.all([api.listClasses(dataset.id), api.listImages(dataset.id)]);
     setClasses(nextClasses);
     setImages(nextImages.items);
-    setActiveClassId((current) => current || nextClasses[0]?.id || "");
+    // A class id belongs to one dataset. Reusing the previous dataset's
+    // active id leaves the annotation canvas without a valid label.
+    setActiveClassId(nextClasses[0]?.id || "");
+  };
+
+  const createDatasetClass = async (name: string, color: string): Promise<ClassLabel | undefined> => {
+    if (!selected) return undefined;
+    const datasetId = selected.id;
+    return runResult(async () => {
+      const created = await api.createClass(datasetId, name, color);
+      setClasses((items) => [...items, created].sort((left, right) => left.class_index - right.class_index));
+      setSelected((current) => current?.id === datasetId ? { ...current, class_count: current.class_count + 1 } : current);
+      setActiveClassId(created.id);
+      setNotice(`已新增类别“${created.name}”`);
+      return created;
+    });
   };
 
   useEffect(() => {
@@ -143,6 +158,7 @@ export default function App() {
           hasPrevious={images.findIndex((item) => item.id === selectedImage.id) > 0}
           hasNext={images.findIndex((item) => item.id === selectedImage.id) < images.length - 1}
           onSave={saveAnnotations}
+          onCreateClass={createDatasetClass}
           onSam={async (box) => {
             setBusy(true);
             setError("");
@@ -377,11 +393,26 @@ function ValidationPanel({ report, compact = false }: { report: ValidationReport
   return <div className={`${report.valid ? "validation valid" : "validation invalid"}${compact ? " compact-validation" : ""}`}><strong>{report.valid ? "校验通过" : "发现需要处理的问题"}</strong><span>{report.error_count} errors · {report.warning_count} warnings</span>{!compact && report.issues.slice(0, 3).map((issue) => <small key={`${issue.code}-${issue.image_id ?? "dataset"}`}>{issue.level === "error" ? "!" : "·"} {issue.message}</small>)}</div>;
 }
 
-export function AnnotationView(props: { dataset: Dataset; image: ImageItem; images?: ImageItem[]; onImageSelect?: (image: ImageItem) => void; classes: ClassLabel[]; annotations: Annotation[]; activeClassId: string; onClassChange: (id: string) => void; onBack: () => void; onPrevious?: () => void; onNext?: () => void; hasPrevious?: boolean; hasNext?: boolean; onSave: (drafts: AnnotationDraft[]) => void; onSam: (box: BBox) => Promise<SamPrediction>; onSamPoints: (points: [number, number][]) => Promise<SamPrediction>; busy: boolean; samCapabilities?: SamCapabilities }) {
+const CLASS_COLORS = ["#3157d5", "#0e9f6e", "#d97706", "#c2416d", "#7c3aed", "#0891b2"];
+
+export function AnnotationView(props: { dataset: Dataset; image: ImageItem; images?: ImageItem[]; onImageSelect?: (image: ImageItem) => void; classes: ClassLabel[]; annotations: Annotation[]; activeClassId: string; onClassChange: (id: string) => void; onBack: () => void; onPrevious?: () => void; onNext?: () => void; hasPrevious?: boolean; hasNext?: boolean; onSave: (drafts: AnnotationDraft[]) => void; onCreateClass?: (name: string, color: string) => Promise<ClassLabel | undefined>; onSam: (box: BBox) => Promise<SamPrediction>; onSamPoints: (points: [number, number][]) => Promise<SamPrediction>; busy: boolean; samCapabilities?: SamCapabilities }) {
   const toDraft = (item: Annotation): AnnotationDraft => ({ id: item.id, class_id: item.class_id, type: item.type, bbox: item.bbox ?? undefined, polygon: item.polygon ?? undefined, obb: item.obb ?? undefined, source: item.source });
   const [drafts, setDrafts] = useState<AnnotationDraft[]>(props.annotations.map(toDraft));
+  const [newClassName, setNewClassName] = useState("");
+  const [newClassColor, setNewClassColor] = useState(CLASS_COLORS[0]);
+  const [showClassForm, setShowClassForm] = useState(props.classes.length === 0);
+  const [classError, setClassError] = useState("");
   const [imagePage, setImagePage] = useState(0);
   useEffect(() => setDrafts(props.annotations.map(toDraft)), [props.annotations, props.image.id]);
+  const selectedClass = props.classes.find((item) => item.id === props.activeClassId);
+  const activeClassId = selectedClass?.id ?? props.classes[0]?.id ?? "";
+  useEffect(() => {
+    if (activeClassId && activeClassId !== props.activeClassId) props.onClassChange(activeClassId);
+  }, [activeClassId, props.activeClassId, props.onClassChange]);
+  useEffect(() => {
+    if (props.classes.length === 0) setShowClassForm(true);
+    if (props.classes.length > 0 && !props.classes.some((item) => item.id === props.activeClassId)) setShowClassForm(false);
+  }, [props.classes, props.activeClassId]);
   const imageCount = props.images?.length ?? 0;
   const imagePageCount = Math.max(1, Math.ceil(imageCount / ANNOTATION_IMAGE_PAGE_SIZE));
   useEffect(() => {
@@ -408,13 +439,31 @@ export function AnnotationView(props: { dataset: Dataset; image: ImageItem; imag
       // The page-level request handler has already surfaced the error.
     }
   };
-  const annotated = drafts.map((draft, index) => ({ ...draft, id: draft.id ?? `draft-${index}`, image_id: props.image.id, dataset_id: props.dataset.id, class_index: 0, label: "", color: props.classes.find((item) => item.id === draft.class_id)?.color ?? "#f97316", created_at: "", updated_at: "" })) as Annotation[];
+  const annotated = drafts.map((draft, index) => { const classItem = props.classes.find((item) => item.id === draft.class_id); return { ...draft, id: draft.id ?? `draft-${index}`, image_id: props.image.id, dataset_id: props.dataset.id, class_index: classItem?.class_index ?? 0, label: classItem?.name ?? "未选择类别", color: classItem?.color ?? "#f97316", created_at: "", updated_at: "" }; }) as Annotation[];
   const chooseClass = (classId: string) => setDrafts([{ class_id: classId, type: "classify", source: "manual" }]);
+  const changeDraftClass = (index: number, classId: string) => setDrafts((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, class_id: classId } : item));
+  const addClass = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = newClassName.trim();
+    if (!name || !props.onCreateClass) return;
+    setClassError("");
+    let created: ClassLabel | undefined;
+    try {
+      created = await props.onCreateClass(name, newClassColor);
+    } catch (reason) {
+      setClassError(errorMessage(reason));
+      return;
+    }
+    if (!created) return;
+    setNewClassName("");
+    setNewClassColor(CLASS_COLORS[(created.class_index + 1) % CLASS_COLORS.length]);
+    setShowClassForm(false);
+  };
   useEffect(() => { const onKey = (event: KeyboardEvent) => { if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return; if (event.key === "ArrowLeft" && props.hasPrevious && !props.busy) props.onPrevious?.(); if (event.key === "ArrowRight" && props.hasNext && !props.busy) props.onNext?.(); if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); props.onSave(drafts); } }; window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey); }, [drafts, props]);
-  return <main className="annotation-layout"><div className="annotation-head"><button className="button" onClick={props.onBack}>← 返回数据集</button><div><span className="eyebrow">{props.dataset.name} / {props.dataset.task_type}</span><h1>{props.image.file_name}</h1><p className="muted">←/→ 切换图片 · ⌘/Ctrl+S 保存</p></div><div className="annotation-navigation" aria-label="图片导航">{props.onPrevious && <button className="button" disabled={props.busy || !props.hasPrevious} title="上一张（←）" onClick={props.onPrevious}>← 上一张</button>}{props.onNext && <button className="button" disabled={props.busy || !props.hasNext} title="下一张（→）" onClick={props.onNext}>下一张 →</button>}</div><div className="annotation-actions"><select value={props.activeClassId} onChange={(event) => props.onClassChange(event.target.value)}>{props.classes.map((item) => <option key={item.id} value={item.id}>{item.class_index}: {item.name}</option>)}</select><button className="button primary" disabled={props.busy || !props.activeClassId} onClick={() => props.onSave(drafts)}>保存标注</button></div></div><div className="annotation-body">
+  return <main className="annotation-layout"><div className="annotation-head"><button className="button" onClick={props.onBack}>← 返回数据集</button><div><span className="eyebrow">{props.dataset.name} / {props.dataset.task_type}</span><h1>{props.image.file_name}</h1><p className="muted">←/→ 切换图片 · ⌘/Ctrl+S 保存</p></div><div className="annotation-navigation" aria-label="图片导航">{props.onPrevious && <button className="button" disabled={props.busy || !props.hasPrevious} title="上一张（←）" onClick={props.onPrevious}>← 上一张</button>}{props.onNext && <button className="button" disabled={props.busy || !props.hasNext} title="下一张（→）" onClick={props.onNext}>下一张 →</button>}</div><div className="annotation-actions"><select aria-label="当前类别" value={activeClassId} disabled={!props.classes.length} onChange={(event) => props.onClassChange(event.target.value)}>{!props.classes.length && <option value="">请先新增类别</option>}{props.classes.map((item) => <option key={item.id} value={item.id}>{item.class_index}: {item.name}</option>)}</select><button className="button primary" disabled={props.busy || !activeClassId} onClick={() => props.onSave(drafts)}>保存标注</button></div></div><div className="annotation-body">
     {props.images && props.images.length > 0 && <aside className="annotation-image-sidebar panel"><div className="annotation-list-heading"><span className="eyebrow">DATASET IMAGES</span><strong>{props.images.length} 张图片</strong></div><div className="annotation-image-list">{props.images.slice(imagePage * ANNOTATION_IMAGE_PAGE_SIZE, (imagePage + 1) * ANNOTATION_IMAGE_PAGE_SIZE).map((item, index) => { const absoluteIndex = imagePage * ANNOTATION_IMAGE_PAGE_SIZE + index; return <button key={item.id} className={item.id === props.image.id ? "annotation-image-item active" : "annotation-image-item"} aria-label={`选择图片 ${item.file_name}`} onClick={() => props.onImageSelect?.(item)}><img src={apiUrl(item.file_url)} alt="" /><span className="annotation-image-copy"><strong>{String(absoluteIndex + 1).padStart(2, "0")} · {item.file_name}</strong><small className={item.status === "annotated" ? "annotated" : "unannotated"}>{item.split} · {item.status === "annotated" ? "已标注" : "未标注"}</small></span></button>; })}</div>{imagePageCount > 1 && <div className="annotation-image-pagination"><button className="button" disabled={imagePage === 0} onClick={() => setImagePage((page) => Math.max(0, page - 1))}>上一页</button><span>第 {imagePage + 1} / {imagePageCount} 页</span><button className="button" disabled={imagePage >= imagePageCount - 1} onClick={() => setImagePage((page) => Math.min(imagePageCount - 1, page + 1))}>下一页</button></div>}</aside>}
-    <div className="annotation-canvas-column">{props.dataset.task_type === "classify" ? <section className="canvas-card classification-card"><span className="eyebrow">IMAGE CLASSIFICATION</span><h2>选择这张图片的唯一类别</h2><p className="hint">分类数据集每张图片只能保存一个类别，训练时会按 train/类别名/图片 导出。</p><div className="class-strip">{props.classes.map((item) => <button key={item.id} className={drafts[0]?.class_id === item.id ? "class-chip active" : "class-chip"} onClick={() => chooseClass(item.id)}><i style={{ background: item.color }} />{item.class_index}: {item.name}</button>)}</div></section> : <AnnotationCanvas image={props.image} classes={props.classes} annotations={annotated} activeClassId={props.activeClassId} taskType={props.dataset.task_type} onChange={setDrafts} onSamBox={props.dataset.task_type === "segment" ? requestSam : undefined} onSamPoints={props.dataset.task_type === "segment" ? requestSamPoints : undefined} samBusy={props.busy} samCapabilities={props.samCapabilities} />}</div>
-    <aside className="annotation-sidebar panel"><span className="eyebrow">SAVED SHAPES</span><h2>{drafts.length} 个标注</h2>{drafts.map((draft, index) => <div className="shape-row" key={draft.id ?? index}><span className="shape-index">{index + 1}</span><div><strong>{props.classes.find((item) => item.id === draft.class_id)?.name ?? "Unknown"}</strong><small>{annotationLabel(draft.type)}</small></div><button className="icon-button" onClick={() => setDrafts((items) => items.filter((_, itemIndex) => itemIndex !== index))}>×</button></div>)}{!drafts.length && <p className="muted">{props.dataset.task_type === "classify" ? "请选择一个类别。" : "在图片上拖拽或点击创建标注。"}</p>}</aside></div></main>;
+    <div className="annotation-canvas-column">{props.dataset.task_type === "classify" ? <section className="canvas-card classification-card"><span className="eyebrow">IMAGE CLASSIFICATION</span><h2>选择这张图片的唯一类别</h2><p className="hint">分类数据集每张图片只能保存一个类别，训练时会按 train/类别名/图片 导出。</p>{props.classes.length ? <div className="class-strip">{props.classes.map((item) => <button key={item.id} className={drafts[0]?.class_id === item.id ? "class-chip active" : "class-chip"} onClick={() => chooseClass(item.id)}><i style={{ background: item.color }} />{item.class_index}: {item.name}</button>)}</div> : <p className="annotation-empty-state">还没有类别，请在右侧“类别”面板中新增一个类别。</p>}</section> : <AnnotationCanvas image={props.image} classes={props.classes} annotations={annotated} activeClassId={activeClassId} taskType={props.dataset.task_type} onChange={setDrafts} onSamBox={props.dataset.task_type === "segment" && activeClassId ? requestSam : undefined} onSamPoints={props.dataset.task_type === "segment" && activeClassId ? requestSamPoints : undefined} samBusy={props.busy} samCapabilities={props.samCapabilities} />}</div>
+    <aside className="annotation-sidebar panel"><section className="annotation-class-manager"><div className="annotation-sidebar-heading"><div><span className="eyebrow">LABEL CLASSES</span><h2>{props.classes.length} 个类别</h2></div><button type="button" className="button" disabled={props.busy || !props.onCreateClass} onClick={() => setShowClassForm((value) => !value)}>{showClassForm ? "收起" : "+ 新增类别"}</button></div>{showClassForm && <form className="annotation-class-form" onSubmit={(event) => void addClass(event)}><label><span>类别名称</span><input autoFocus value={newClassName} placeholder="例如：person" onChange={(event) => setNewClassName(event.target.value)} /></label><div className="annotation-class-form-row"><label><span>颜色</span><input aria-label="类别颜色" type="color" value={newClassColor} onChange={(event) => setNewClassColor(event.target.value)} /></label><button className="button primary" type="submit" disabled={props.busy || !newClassName.trim()}>添加</button></div>{classError && <small className="annotation-form-error">{classError}</small>}</form>}<div className="annotation-class-list">{props.classes.map((item) => <button type="button" key={item.id} className={`annotation-class-item${item.id === activeClassId ? " active" : ""}`} onClick={() => props.onClassChange(item.id)}><i style={{ background: item.color }} /><span><strong>{item.class_index}. {item.name}</strong><small>{item.id === activeClassId ? "当前绘制类别" : "点击切换"}</small></span></button>)}{!props.classes.length && <p className="muted">先新增一个类别，标注对象就不会再显示为“未选择类别”。</p>}</div></section><section className="annotation-shape-list"><div className="annotation-sidebar-heading"><div><span className="eyebrow">SAVED SHAPES</span><h2>{drafts.length} 个标注</h2></div></div>{drafts.map((draft, index) => <div className="shape-row" key={draft.id ?? index}><span className="shape-index">{index + 1}</span><div><select className="shape-class-select" aria-label={`标注 ${index + 1} 类别`} value={draft.class_id} disabled={!props.classes.length} onChange={(event) => changeDraftClass(index, event.target.value)}>{!props.classes.length && <option value="">未选择类别</option>}{props.classes.map((item) => <option key={item.id} value={item.id}>{item.class_index}: {item.name}</option>)}</select><small>{annotationLabel(draft.type)}</small></div><button className="icon-button" aria-label={`删除标注 ${index + 1}`} onClick={() => setDrafts((items) => items.filter((_, itemIndex) => itemIndex !== index))}>×</button></div>)}{!drafts.length && <p className="muted">{props.dataset.task_type === "classify" ? "请选择一个类别。" : "在图片上拖拽或点击创建标注。"}</p>}</section></aside></div></main>;
 }
 
 function errorMessage(reason: unknown): string { return reason instanceof Error ? reason.message : "操作失败，请检查后端服务。"; }

@@ -132,6 +132,7 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
   };
   const samConfigured = samCapabilities?.model_configured ?? false;
   const pointPromptAvailable = samCapabilities?.point_prompt_available ?? false;
+  const canAnnotate = Boolean(activeClassId);
   const selectedAngle = selectedObb?.obb?.angle ?? angle;
   const draftObb = dragStart && dragEnd && tool === "obb" ? normalizeBBox(dragStart, dragEnd) : undefined;
 
@@ -143,20 +144,21 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
           <h2>{image.file_name}</h2>
         </div>
         <div className="tool-group">
-          {taskType === "detect" && <button className={tool === "bbox" ? "button active" : "button"} onClick={() => { setTool("bbox"); setPolygonPoints([]); }}>BBox</button>}
-          {taskType === "segment" && <><button className={tool === "polygon" ? "button active" : "button"} onClick={() => { setTool("polygon"); setDragStart(undefined); }}>Polygon</button><button className={tool === "sam" ? "button active" : "button"} disabled={samBusy || !samCapabilities?.box_prompt_available} onClick={() => { setTool("sam"); setPolygonPoints([]); }}>{samConfigured ? "SAM 框选" : "框形建议"}</button><button className={tool === "sam_point" ? "button active" : "button"} disabled={samBusy || !pointPromptAvailable} title={pointPromptAvailable ? undefined : "配置 YWA_SAM_MODEL 后可用"} onClick={() => { setTool("sam_point"); setPolygonPoints([]); }}>{pointPromptAvailable ? "SAM 点选" : "SAM 点选（需配置）"}</button></>}
-          {taskType === "obb" && <><button className={tool === "obb" ? "button active" : "button"} onClick={() => { setTool("obb"); setPolygonPoints([]); }}>OBB</button><label className="angle-input">角度<input aria-label="OBB angle" type="number" value={selectedAngle} onChange={(event) => { const nextAngle = Number(event.target.value); if (!Number.isFinite(nextAngle)) return; if (selectedObb?.obb) replaceObb(selectedObb.id, { ...toStageObb(selectedObb.obb), angle: nextAngle }); else setAngle(nextAngle); }} /></label>{selectedObb && <button className="button danger" onClick={removeSelectedObb}>删除所选 OBB</button>}</>}
-          {tool === "polygon" && <button className="button primary" onClick={finishPolygon}>完成多边形</button>}
+          {taskType === "detect" && <button className={tool === "bbox" ? "button active" : "button"} disabled={!canAnnotate} onClick={() => { setTool("bbox"); setPolygonPoints([]); }}>BBox</button>}
+          {taskType === "segment" && <><button className={tool === "polygon" ? "button active" : "button"} disabled={!canAnnotate} onClick={() => { setTool("polygon"); setDragStart(undefined); }}>Polygon</button><button className={tool === "sam" ? "button active" : "button"} disabled={!canAnnotate || samBusy || !samCapabilities?.box_prompt_available} onClick={() => { setTool("sam"); setPolygonPoints([]); }}>{samConfigured ? "SAM 框选" : "框形建议"}</button><button className={tool === "sam_point" ? "button active" : "button"} disabled={!canAnnotate || samBusy || !pointPromptAvailable} title={pointPromptAvailable ? undefined : "配置 YWA_SAM_MODEL 后可用"} onClick={() => { setTool("sam_point"); setPolygonPoints([]); }}>{pointPromptAvailable ? "SAM 点选" : "SAM 点选（需配置）"}</button></>}
+          {taskType === "obb" && <><button className={tool === "obb" ? "button active" : "button"} disabled={!canAnnotate} onClick={() => { setTool("obb"); setPolygonPoints([]); }}>OBB</button><label className="angle-input">角度<input aria-label="OBB angle" type="number" value={selectedAngle} onChange={(event) => { const nextAngle = Number(event.target.value); if (!Number.isFinite(nextAngle)) return; if (selectedObb?.obb) replaceObb(selectedObb.id, { ...toStageObb(selectedObb.obb), angle: nextAngle }); else setAngle(nextAngle); }} /></label>{selectedObb && <button className="button danger" onClick={removeSelectedObb}>删除所选 OBB</button>}</>}
+          {tool === "polygon" && <button className="button primary" disabled={!canAnnotate} onClick={finishPolygon}>完成多边形</button>}
           <button className="button" onClick={() => { setPolygonPoints([]); setDragStart(undefined); setDragEnd(undefined); setSelectedObbId(undefined); }}>清空草稿</button>
         </div>
       </div>
-      <p className="hint">当前类别：{classes.find((item) => item.id === activeClassId)?.name ?? "未选择"}。{taskType === "obb" ? selectedObb ? "已选中 OBB：拖动可移动，四角手柄可缩放，顶部圆形手柄可旋转。" : "拖拽创建 OBB；点击既有框即可选择、旋转、缩放或删除。" : taskType === "detect" && selectedBbox ? "已选中框：拖动可移动，四角手柄可调整大小；BBox 不支持旋转。" : tool === "sam" ? samConfigured ? "拖拽一个提示框，SAM 会返回可确认的多边形建议。" : "未配置 SAM：框选只会生成可审阅的矩形建议，不会运行模型推理。" : tool === "sam_point" ? "点击一个前景点，SAM 会返回可确认的多边形建议。" : taskType === "segment" && !samConfigured ? "SAM 未配置；可使用 Polygon，或使用仅供审阅的框形建议。" : "坐标以原图像素保存。"}</p>
+      <p className="hint">当前类别：{classes.find((item) => item.id === activeClassId)?.name ?? "未选择"}。{!canAnnotate ? "请先在右侧新增一个类别，再开始绘制。" : taskType === "obb" ? selectedObb ? "已选中 OBB：拖动可移动，四角手柄可缩放，顶部圆形手柄可旋转。" : "拖拽创建 OBB；点击既有框即可选择、旋转、缩放或删除。" : taskType === "detect" && selectedBbox ? "已选中框：拖动可移动，四角手柄可调整大小；BBox 不支持旋转。" : tool === "sam" ? samConfigured ? "拖拽一个提示框，SAM 会返回可确认的多边形建议。" : "未配置 SAM：框选只会生成可审阅的矩形建议，不会运行模型推理。" : tool === "sam_point" ? "点击一个前景点，SAM 会返回可确认的多边形建议。" : taskType === "segment" && !samConfigured ? "SAM 未配置；可使用 Polygon，或使用仅供审阅的框形建议。" : "坐标以原图像素保存。"}</p>
       <div className="stage-wrap">
         {imageElement ? (
           <Stage
             width={displaySize.width}
             height={displaySize.height}
             onMouseDown={(event) => {
+              if (!activeClassId) return;
               const point = pointer(event);
               if (!point) return;
               if (tool !== "polygon" && !["Stage", "Layer"].includes(event.target.getClassName())) return;
@@ -173,7 +175,7 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
               if (point) setDragEnd(point);
             }}
             onMouseUp={(event) => {
-              if (tool === "polygon" || tool === "sam_point" || !dragStart) return;
+              if (!activeClassId || tool === "polygon" || tool === "sam_point" || !dragStart) return;
               const point = pointer(event);
               if (!point) {
                 setDragStart(undefined);
