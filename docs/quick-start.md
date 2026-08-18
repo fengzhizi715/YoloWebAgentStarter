@@ -1,8 +1,8 @@
-# Five-minute quick start
+# 五分钟快速开始
 
-## 1. Start locally
+## 1. 本地启动
 
-Use Python 3.11 or 3.12 and Node.js 20 or newer. From the repository root:
+请使用 Python 3.11 或 3.12，以及 Node.js 20 或更高版本。在仓库根目录执行：
 
 ```bash
 python3.12 -m venv .venv
@@ -11,71 +11,71 @@ npm --prefix frontend install
 ./run-backend.sh
 ```
 
-Start the frontend in another terminal:
+在另一个终端启动前端：
 
 ```bash
 ./run-frontend.sh
 ```
 
-Open `http://127.0.0.1:5173`. Both development servers are local-only by default. Alternatively, run `./run-all.sh` (or `sh run-all.sh`) from the repository root to start both processes; `Ctrl+C` stops them together.
+打开 `http://127.0.0.1:5173`。两个开发服务默认仅绑定本机。也可以在仓库根目录执行 `./run-all.sh`（或 `sh run-all.sh`）同时启动两个进程；按 `Ctrl+C` 可同时停止它们。
 
-## 2. Create data and annotate
+## 2. 创建数据集并标注
 
-1. Create a `detect`, `segment`, `obb`, or `classify` dataset.
-2. Upload images, or put them below `data/imports/` and scan a relative subdirectory.
-3. Add one or more classes, then use bbox (detect), polygon (segment), rotated box (OBB), or one image-level class (classify).
-4. Keep at least one annotated image in both `train` and `val`, then run dataset validation.
-5. Export/import YOLO ZIP files for detect, segment, or OBB; classification uses the standard `train/<class>/<image>` directory layout.
+1. 创建 `detect`、`segment`、`obb` 或 `classify` 数据集。
+2. 上传图片，或将图片放入 `data/imports/` 下，再扫描相对目录。
+3. 添加一个或多个类别，然后使用 bbox（detect）、polygon（segment）、旋转框（OBB）或每张图片一个类别（classify）进行标注。
+4. 确保 `train` 和 `val` 中都至少有一张已标注图片，然后运行数据集校验。
+5. detect、segment 和 OBB 使用 YOLO ZIP 文件导入/导出；分类任务使用标准的 `train/<class>/<image>` 目录布局。
 
-For segment datasets, open the left sidebar's SAM settings page to configure the model, inference device, image size, and fallback mode. The same values can be supplied as `YWA_SAM_*` environment defaults. Without a model, the UI disables point prompts and clearly labels box prompts as a review-only rectangular suggestion; it does not claim model inference or save the suggestion as SAM-generated.
+对于 segment 数据集，请打开左侧边栏的 SAM 设置页面，配置模型、推理设备、图像尺寸和回退模式。相同的配置也可以通过 `YWA_SAM_*` 环境变量提供默认值。未配置模型时，界面会禁用点提示，并明确将框提示标记为仅供审核的矩形建议；系统不会声称执行了模型推理，也不会将该建议保存为 SAM 生成的标注。
 
-For OBB datasets, drag on an empty canvas area to create a rotated box. Click an existing OBB to select it, drag it to move it, use the four corner handles to resize it, and use the top rotation handle (or the angle field) to rotate it. The editor keeps the resulting rotated corners inside the image before saving.
+对于 OBB 数据集，在画布空白区域拖动即可创建旋转框。点击已有 OBB 可选中它，拖动可移动，使用四个角点手柄可调整大小，使用顶部旋转手柄（或角度字段）可旋转。编辑器会在保存前将旋转框的角点限制在图片范围内。
 
-For a disposable tiny detect dataset that can be imported through the UI:
+如需生成一个可通过界面导入、用完即可丢弃的微型 detect 数据集：
 
 ```bash
 ./.venv/bin/python scripts/create_tiny_demo.py /tmp/ywa-tiny-demo
 ```
 
-The command writes three generated PNGs, labels, and `data.yaml`; it does not download or redistribute a model weight.
+该命令会写入三个生成的 PNG 文件、标签和 `data.yaml`；不会下载或再分发模型权重。
 
-## 3. Train and export
+## 3. 训练与导出
 
-Open the training workspace, choose a matching named model (for example `yolo11n.pt`, `yolo11n-seg.pt`, `yolo11n-obb.pt`, or `yolo11n-cls.pt`), select CPU, MPS, or CUDA. When multiple CUDA devices are available, select two or more GPUs to pass `device=0,1` to local Ultralytics DDP. The first named-weight run may download a weight through Ultralytics. Finished tasks register `best.pt` and `last.pt` beneath `data/models/`; the model workspace can download them or create a static FP32 ONNX file.
+打开训练工作区，选择与数据集类型匹配的模型名称（例如 `yolo11n.pt`、`yolo11n-seg.pt`、`yolo11n-obb.pt` 或 `yolo11n-cls.pt`），然后选择 CPU、MPS 或 CUDA。存在多个 CUDA 设备时，可选择两个或更多 GPU，将 `device=0,1` 传递给本地 Ultralytics DDP。首次使用命名权重训练时，Ultralytics 可能会下载权重。任务完成后，`best.pt` 和 `last.pt` 会登记到 `data/models/` 下；模型工作区可以下载它们，或生成静态 FP32 ONNX 文件。
 
-Use the left sidebar's Logs page to inspect the bounded tail of the local backend runtime log. The language setting changes the workspace shell and the new settings/logs pages; the preference is stored only in the browser.
+使用左侧边栏的“日志”页面查看本地后端运行日志的有限末尾内容。语言设置会改变工作区外壳以及新的设置/日志页面；该偏好只保存在浏览器中。
 
-## Configuration and data locations
+## 配置与数据位置
 
-| Setting | Default | Purpose |
+| 配置项 | 默认值 | 用途 |
 |---|---|---|
-| `YWA_DATA_DIR` | `./data` | All Starter-owned SQLite data, images, runs, exports, and models |
-| `YWA_IMPORT_ROOT` | `./data/imports` | Only root permitted for server-side directory scanning |
-| `YWA_HOST` | `127.0.0.1` | Local bind address; keep it local without adding authentication |
-| `YWA_MAX_UPLOAD_MB` | `50` | Per-upload size limit |
-| `YWA_YOLO_EXECUTABLE` | repository `.venv/bin/yolo` | Reviewed local override for the Ultralytics executable |
-| `YWA_SAM_MODEL` | unset | Local or Ultralytics-recognized SAM checkpoint; enables actual box and point inference |
-| `YWA_SAM_DEVICE` | `auto` | SAM inference device request; responses report the resolved device when Ultralytics exposes it |
-| `YWA_SAM_IMGSZ` | `1024` | SAM inference image size |
+| `YWA_DATA_DIR` | `./data` | Starter 自有的 SQLite 数据、图片、运行目录、导出文件和模型的存储位置 |
+| `YWA_IMPORT_ROOT` | `./data/imports` | 服务端目录扫描唯一允许使用的根目录 |
+| `YWA_HOST` | `127.0.0.1` | 本地绑定地址；未配置身份认证时应保持本地绑定 |
+| `YWA_MAX_UPLOAD_MB` | `50` | 单次上传大小限制 |
+| `YWA_YOLO_EXECUTABLE` | 仓库 `.venv/bin/yolo` | 经过审核的 Ultralytics 可执行文件本地覆盖路径 |
+| `YWA_SAM_MODEL` | 未设置 | 本地或 Ultralytics 可识别的 SAM 检查点；配置后启用真实的框提示和点提示推理 |
+| `YWA_SAM_DEVICE` | `auto` | SAM 推理设备请求；如果 Ultralytics 提供解析结果，响应会报告实际设备 |
+| `YWA_SAM_IMGSZ` | `1024` | SAM 推理图像尺寸 |
 
-The SAM settings page persists to `YWA_DATA_DIR/settings.json`; runtime logs are stored in `YWA_DATA_DIR/logs/backend.log`, rotate at 2 MiB, retain three backups, and are merged by the Logs page when showing the newest lines.
+SAM 设置页面会将配置持久化到 `YWA_DATA_DIR/settings.json`；运行日志存储在 `YWA_DATA_DIR/logs/backend.log`，每个日志文件达到 2 MiB 后轮换并保留三个备份。日志页面展示最新内容时会合并这些日志文件。
 
-Never point the database, import directory, or model registry at an Enterprise checkout.
+不要将数据库、导入目录或模型注册表指向 Enterprise 仓库的工作副本。
 
-## Troubleshooting
+## 故障排查
 
-| Symptom | Action |
+| 现象 | 处理方法 |
 |---|---|
-| Training fails with `AttributeError: module 'numpy' has no attribute 'trapz'` | The environment has NumPy 2.x, which is incompatible with the pinned `ultralytics==8.3.40` validation code. Reinstall the project requirements in the repository `.venv` to use NumPy 1.x: `.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt`. |
-| Dependency resolver reports NumPy conflicts | Recreate `.venv` with Python 3.11 or 3.12, then install the pinned requirements. Python 3.13 is not a release target. |
-| API will not start | Check `YWA_HOST` is `127.0.0.1`, then run `PYTHONPATH=backend .venv/bin/alembic -c backend/alembic.ini upgrade head`. |
-| Training is rejected | Validate the dataset, ensure both `train` and `val` contain images, and use a model family matching the dataset type. |
-| First training run cannot download a weight | Supply network access for Ultralytics' first named-weight download, or use an already managed model under `data/models/`. |
-| ONNX export fails | Keep the source PT under `data/models/`, confirm the installed `onnx`, `onnxruntime`, `onnxscript`, and `onnx_ir` packages, then inspect the task/model response error. |
+| 训练失败并出现 `AttributeError: module 'numpy' has no attribute 'trapz'` | 当前环境使用了 NumPy 2.x，与固定版本 `ultralytics==8.3.40` 的校验代码不兼容。请在仓库 `.venv` 中重新安装项目依赖，以使用 NumPy 1.x：`.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt`。 |
+| 依赖解析器报告 NumPy 冲突 | 使用 Python 3.11 或 3.12 重新创建 `.venv`，然后安装固定版本依赖。Python 3.13 不在发布支持范围内。 |
+| API 无法启动 | 确认 `YWA_HOST` 为 `127.0.0.1`，然后执行 `PYTHONPATH=backend .venv/bin/alembic -c backend/alembic.ini upgrade head`。 |
+| 训练任务被拒绝 | 先校验数据集，确保 `train` 和 `val` 都包含已标注图片，并使用与数据集类型匹配的模型系列。 |
+| 首次训练无法下载权重 | 为 Ultralytics 首次下载命名权重提供网络访问，或使用 `data/models/` 下已有的受管模型。 |
+| ONNX 导出失败 | 将源 PT 文件保存在 `data/models/` 下，确认已安装 `onnx`、`onnxruntime`、`onnxscript` 和 `onnx_ir`，然后检查任务/模型响应中的错误信息。 |
 
-## Known limits
+## 已知限制
 
-- Local single-user only; no authentication, RBAC, TLS, public deployment, or tenancy.
-- Supports detect, segment, OBB, and single-label classify only; pose is not supported.
-- No batch automatic annotation, Agent, Workflow, evaluation, deployment, or text-prompt segmentation.
-- CPU is release-tested. CUDA single/multi-GPU and Apple MPS are best-effort and must be smoke-tested in the target environment; remote training schedulers are not supported.
+- 仅支持本地单用户使用；不提供身份认证、RBAC、TLS、公开部署或多租户能力。
+- 仅支持 detect、segment、OBB 和单标签 classify；不支持 pose。
+- 不提供批量自动标注、Agent、Workflow、evaluation、deployment 或文本提示分割。
+- CPU 已通过发布测试。CUDA 单卡/多卡和 Apple MPS 属于尽力支持，必须在目标环境中进行冒烟测试；不支持远程训练调度器。

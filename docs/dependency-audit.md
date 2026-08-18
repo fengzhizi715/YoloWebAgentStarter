@@ -1,13 +1,13 @@
-# Dependency audit
+# 依赖审计
 
-Generated from the repository `.venv` package metadata and `frontend/package-lock.json`.
-License metadata is an inventory aid, not a legal determination; every `UNKNOWN` entry requires manual review before release.
+本报告根据仓库 `.venv` 的软件包元数据和 `frontend/package-lock.json` 生成。
+许可证元数据仅用于清单盘点，不构成法律判断；每个 `UNKNOWN` 条目都必须在发布前人工复核。
 
-## Python distributions
+## Python 发行包
 
-Package count: **68**.
+软件包数量：**68**。
 
-License metadata summary:
+许可证元数据汇总：
 - `BSD (declared text)`: 4
 - `MIT`: 2
 - `MPL-2.0 AND MIT`: 1
@@ -22,7 +22,7 @@ License metadata summary:
 - `OSI Approved :: Python Software Foundation License`: 1
 - `UNKNOWN`: 20
 
-| Package | Version | License metadata |
+| 软件包 | 版本 | 许可证元数据 |
 |---|---|---|
 | `alembic` | `1.14.0` | OSI Approved :: MIT License |
 | `annotated-types` | `0.8.0` | OSI Approved :: MIT License |
@@ -93,11 +93,11 @@ License metadata summary:
 | `watchfiles` | `1.2.0` | OSI Approved :: MIT License |
 | `websockets` | `17.0.1` | UNKNOWN |
 
-## npm packages
+## npm 软件包
 
-Package count: **264**.
+软件包数量：**264**。
 
-License metadata summary:
+许可证元数据汇总：
 - `Apache-2.0`: 4
 - `BSD-2-Clause`: 2
 - `BSD-3-Clause`: 2
@@ -106,7 +106,7 @@ License metadata summary:
 - `MIT`: 246
 - `MIT-0`: 1
 
-| Package | Version | License metadata |
+| 软件包 | 版本 | 许可证元数据 |
 |---|---|---|
 | `@asamuzakjp/css-color` | `3.2.0` | MIT |
 | `@asamuzakjp/css-color/node_modules/lru-cache` | `10.4.3` | ISC |
