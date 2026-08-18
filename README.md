@@ -148,7 +148,7 @@ yolo <detect|segment|obb|classify> val ... plots=True save_json=True exist_ok=Tr
 
 Community v2 的固定对齐基线是 YoloWebAgent commit `701f6e5a63b73f39e35f48fb6de7d2414401875a`。评估 runner、artifact manager、错误样本分析和详情面板沿用上游模块边界，并只裁剪到 detect、segment、OBB、classify；Ultralytics 8.3.40 文件名与 JSON 适配是该上游合约的兼容扩展。
 
-Starter 运行时不会 import、读取或依赖 YoloWebAgent/Enterprise 仓库，也不包含其 Auth、RBAC、License、Agent、Workflow、Evaluation 自动化回调、Deployment 或 pose 模块。逐文件关系见[迁移矩阵](migration_matrix.md)。
+Starter 运行时不会 import、读取或依赖 YoloWebAgent/Enterprise 仓库，也不包含其 Auth、RBAC、License、Agent、Workflow、Evaluation 自动化回调、Deployment 或 pose 模块。
 
 ## 项目结构
 
