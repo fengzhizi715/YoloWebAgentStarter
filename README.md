@@ -148,7 +148,7 @@ yolo <detect|segment|obb|classify> val ... plots=True save_json=True exist_ok=Tr
 
 Community v2 的固定对齐基线是 YoloWebAgent commit `701f6e5a63b73f39e35f48fb6de7d2414401875a`。评估 runner、artifact manager、错误样本分析和详情面板沿用上游模块边界，并只裁剪到 detect、segment、OBB、classify；Ultralytics 8.3.40 文件名与 JSON 适配是该上游合约的兼容扩展。
 
-Starter 运行时不会 import、读取或依赖 YoloWebAgent/Enterprise 仓库，也不包含其 Auth、RBAC、License、Agent、Workflow、Evaluation 自动化回调、Deployment 或 pose 模块。逐文件关系见[迁移矩阵](migration_matrix.md)，固定快照与选择性抽取记录见[source snapshot](source_snapshot.md)。
+Starter 运行时不会 import、读取或依赖 YoloWebAgent/Enterprise 仓库，也不包含其 Auth、RBAC、License、Agent、Workflow、Evaluation 自动化回调、Deployment 或 pose 模块。逐文件关系见[迁移矩阵](migration_matrix.md)。
 
 ## 项目结构
 
@@ -192,8 +192,6 @@ PYTHONPATH=backend .venv/bin/python scripts/run_cpu_smoke.py
 
 仓库包含 MIT `LICENSE`，但其并不单独授予固定 YoloWebAgent 快照派生部分的再许可权；在上游授权门槛通过前，本项目不具备可公开发布条件。不要因为仓库中存在 MIT 文件而推断整个代码库已获授权。
 
-- [上游授权发布门槛](docs/provenance/UPSTREAM_AUTHORIZATION.md)
-- [固定来源快照](source_snapshot.md)
 - [逐模块迁移审计](migration_matrix.md)
 - [第三方依赖与模型权重说明](THIRD_PARTY_NOTICES.md)
 
