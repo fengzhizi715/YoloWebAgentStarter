@@ -249,7 +249,7 @@ class ModelService:
         task_root = self.storage.evaluation_task_dir(evaluation_id)
         try:
             export = export_dataset_directory(session, self.storage, model.dataset_id, task_root / "dataset")
-            if not export["counts"].get(split):
+            if not export["annotated_image_counts"].get(split):
                 raise ValidationError("evaluation_split_empty", f"The exported {split} split has no annotated images to evaluate.")
             record = ModelEvaluationRecord(
                 id=evaluation_id,

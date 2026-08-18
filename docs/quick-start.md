@@ -24,7 +24,7 @@ Open `http://127.0.0.1:5173`. Both development servers are local-only by default
 1. Create a `detect`, `segment`, `obb`, or `classify` dataset.
 2. Upload images, or put them below `data/imports/` and scan a relative subdirectory.
 3. Add one or more classes, then use bbox (detect), polygon (segment), rotated box (OBB), or one image-level class (classify).
-4. Keep at least one image in both `train` and `val`, then run dataset validation.
+4. Keep at least one annotated image in both `train` and `val`, then run dataset validation.
 5. Export/import YOLO ZIP files for detect, segment, or OBB; classification uses the standard `train/<class>/<image>` directory layout.
 
 For segment datasets, open the left sidebar's SAM settings page to configure the model, inference device, image size, and fallback mode. The same values can be supplied as `YWA_SAM_*` environment defaults. Without a model, the UI disables point prompts and clearly labels box prompts as a review-only rectangular suggestion; it does not claim model inference or save the suggestion as SAM-generated.

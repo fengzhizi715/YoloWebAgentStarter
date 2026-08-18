@@ -4,6 +4,7 @@ import io
 import time
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 
@@ -420,18 +421,30 @@ def test_obb_and_classify_training_use_their_weight_families(client, tmp_path, m
         assert task["status"] == "completed", task
 
 
-def test_classify_training_requires_annotated_train_and_val_images(client):
-    dataset_id, _ = prepared_dataset(client, "classify")
-    train_image = next(image for image in client.get(f"/api/datasets/{dataset_id}/images").json()["items"] if image["split"] == "train")
-    cleared = client.put(f"/api/datasets/{dataset_id}/images/{train_image['id']}/annotations", json={"annotations": []})
+@pytest.mark.parametrize(
+    ("task_type", "model", "error_code", "missing_split"),
+    [
+        ("detect", "yolo11n.pt", "training_split_unannotated", "train"),
+        ("detect", "yolo11n.pt", "training_split_unannotated", "val"),
+        ("segment", "yolo11n-seg.pt", "training_split_unannotated", "val"),
+        ("obb", "yolo11n-obb.pt", "training_split_unannotated", "val"),
+        ("classify", "yolo11n-cls.pt", "training_classification_split_unannotated", "train"),
+        ("classify", "yolo11n-cls.pt", "training_classification_split_unannotated", "val"),
+    ],
+)
+def test_training_requires_annotated_train_and_val_splits(client, task_type, model, error_code, missing_split):
+    dataset_id, _ = prepared_dataset(client, task_type)
+    image = next(item for item in client.get(f"/api/datasets/{dataset_id}/images").json()["items"] if item["split"] == missing_split)
+    cleared = client.put(f"/api/datasets/{dataset_id}/images/{image['id']}/annotations", json={"annotations": []})
     assert cleared.status_code == 200
 
     response = client.post(
         "/api/training/tasks",
-        json={"dataset_id": dataset_id, "model": "yolo11n-cls.pt"},
+        json={"dataset_id": dataset_id, "model": model},
     )
     assert response.status_code == 422
-    assert response.json()["error"]["code"] == "training_classification_split_unannotated"
+    assert response.json()["error"]["code"] == error_code
+    assert response.json()["error"]["details"] == {"missing_splits": [missing_split]}
 
 
 def test_running_training_can_be_stopped(client, tmp_path, monkeypatch):

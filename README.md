@@ -78,7 +78,7 @@ npm --prefix frontend install
 1. 创建 `detect`、`segment`、`obb` 或 `classify` 数据集。
 2. 上传图片，或把图片放入 `data/imports/` 下的子目录并在界面中扫描。
 3. 添加类别并标注：bbox、polygon、可旋转 OBB，或每图一个分类标签。
-4. 确保 `train` 与 `val` 都至少有一张图片，运行数据集校验。
+4. 确保 `train` 与 `val` 都至少有一张已标注图片，运行数据集校验。
 5. 导出/导入 YOLO 数据，或在训练页选择匹配的模型族并发起本地任务。
 6. 训练完成后进入“模型”工作区，对受管 PT 选择 `train`、`val` 或 `test` split 创建后台评估任务。
 

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.ids import new_id
-from app.core.models import Annotation, ClassLabel, Dataset, ImageItem, TrainingProfile, TrainingTask
+from app.core.models import ClassLabel, Dataset, ImageItem, TrainingProfile, TrainingTask
 from app.core.storage import Storage
 from app.core.task_types import TaskType
 from app.dataset.exchange.yolo import export_dataset_directory
@@ -110,6 +110,7 @@ class TrainingService:
             if resume_checkpoint is not None:
                 model_reference = str(resume_checkpoint)
             export = export_dataset_directory(session, self.storage, dataset.id, export_root)
+            self._validate_export_training_splits(export, dataset.task_type)
             data_yaml = str(export["data_yaml"])
             command = build_training_command(
                 task_type=task_type,
@@ -300,31 +301,26 @@ class TrainingService:
         )
         if not split_counts.get("train") or not split_counts.get("val"):
             raise ValidationError("training_split_missing", "Training requires at least one train image and one val image.")
-        if dataset.task_type == "classify":
-            annotated_splits = set(
-                session.scalars(
-                    select(ImageItem.split)
-                    .join(Annotation, Annotation.image_id == ImageItem.id)
-                    .where(
-                        ImageItem.dataset_id == dataset.id,
-                        Annotation.dataset_id == dataset.id,
-                        Annotation.type == "classify",
-                    )
-                )
-            )
-            missing = {"train", "val"} - annotated_splits
-            if missing:
-                raise ValidationError(
-                    "training_classification_split_unannotated",
-                    "Classification training requires at least one annotated image in both train and val splits.",
-                    details={"missing_splits": sorted(missing)},
-                )
         class_count = session.scalar(select(func.count()).select_from(ClassLabel).where(ClassLabel.dataset_id == dataset.id)) or 0
         if not class_count:
             raise ValidationError("training_classes_missing", "Training requires at least one class label.")
-        annotation_count = session.scalar(select(func.count()).select_from(Annotation).where(Annotation.dataset_id == dataset.id)) or 0
-        if not annotation_count:
-            raise ValidationError("training_annotations_missing", "Training requires at least one annotation.")
+
+    @staticmethod
+    def _validate_export_training_splits(export: dict[str, object], task_type: str) -> None:
+        annotated_image_counts = dict(export.get("annotated_image_counts") or {})
+        missing = [split for split in ("train", "val") if not annotated_image_counts.get(split)]
+        if missing:
+            if task_type == TaskType.CLASSIFY:
+                raise ValidationError(
+                    "training_classification_split_unannotated",
+                    "Classification training requires at least one annotated image in both train and val splits.",
+                    details={"missing_splits": missing},
+                )
+            raise ValidationError(
+                "training_split_unannotated",
+                "Training requires at least one valid annotation in both train and val splits.",
+                details={"missing_splits": missing},
+            )
 
 
 def task_response(task: TrainingTask) -> TrainingTaskResponse:

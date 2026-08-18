@@ -222,6 +222,31 @@ def test_evaluation_creation_exports_segment_for_native_yolo_val(client, tmp_pat
     assert Path(payload["export_path"], "labels", "val").is_dir()
 
 
+def test_evaluation_rejects_split_with_only_unannotated_images(client, tmp_path):
+    dataset = client.post("/api/datasets", json={"name": "empty-val", "task_type": "detect"}).json()
+    client.post(f"/api/datasets/{dataset['id']}/classes", json={"name": "object"})
+    image = Image.new("RGB", (64, 48), "white")
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    uploaded = client.post(
+        f"/api/datasets/{dataset['id']}/images/upload",
+        data={"split": "val"},
+        files={"files": ("unannotated.png", output.getvalue(), "image/png")},
+    )
+    assert uploaded.status_code == 201
+    model_path = tmp_path / "model.pt"
+    model_path.write_bytes(b"fake")
+    with client.app.state.database.session_factory() as session:
+        managed = client.app.state.storage.copy_model_artifact(model_path, "model-empty-val", "best.pt")
+        session.add(ModelVersion(id="model-empty-val", name="empty-val", version="v1", dataset_id=dataset["id"], source="training_task", artifact_type="best", format="pt", task_type="detect", engine_type="ultralytics", model_path=str(managed), status="active", metrics_json={}, notes=""))
+        session.commit()
+
+    response = client.post("/api/models/model-empty-val/evaluate", json={"split": "val"})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "evaluation_split_empty"
+
+
 def test_evaluation_logs_and_artifacts_are_served_from_managed_storage(client, tmp_path):
     dataset = client.post("/api/datasets", json={"name": "artifacts", "task_type": "detect"}).json()
     model_path = tmp_path / "model.pt"

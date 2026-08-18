@@ -356,6 +356,7 @@ def export_dataset_directory(session: Session, storage: Storage, dataset_id: str
     for annotation in annotations:
         annotations_by_image.setdefault(annotation.image_id, []).append(annotation)
     counts = {"train": 0, "val": 0, "test": 0}
+    annotated_image_counts = {"train": 0, "val": 0, "test": 0}
     label_count = 0
 
     for image in images:
@@ -376,6 +377,7 @@ def export_dataset_directory(session: Session, storage: Storage, dataset_id: str
             image_destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, image_destination)
             counts[image.split] += 1
+            annotated_image_counts[image.split] += 1
             label_count += 1
             continue
         image_destination = target / "images" / image.split / f"{stem}{source.suffix.lower()}"
@@ -405,6 +407,7 @@ def export_dataset_directory(session: Session, storage: Storage, dataset_id: str
             else:
                 raise ValidationError("unsupported_annotation_type", "Annotation type cannot be exported to YOLO labels.")
         if lines:
+            annotated_image_counts[image.split] += 1
             label_count += len(lines)
         label_destination.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
         counts[image.split] += 1
@@ -414,6 +417,7 @@ def export_dataset_directory(session: Session, storage: Storage, dataset_id: str
             "root": str(target),
             "data_yaml": str(target),
             "counts": counts,
+            "annotated_image_counts": annotated_image_counts,
             "label_count": label_count,
         }
 
@@ -435,6 +439,7 @@ def export_dataset_directory(session: Session, storage: Storage, dataset_id: str
         "root": str(target),
         "data_yaml": str(data_yaml),
         "counts": counts,
+        "annotated_image_counts": annotated_image_counts,
         "label_count": label_count,
     }
 
