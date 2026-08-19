@@ -39,6 +39,34 @@ def test_delete_dataset_removes_record_and_managed_images(client):
     assert not dataset_dir.exists()
 
 
+def test_class_color_is_returned_when_annotations_are_reloaded(client):
+    dataset_id = create_dataset(client)
+    created = client.post(f"/api/datasets/{dataset_id}/classes", json={"name": "cat", "color": "#ef4444"})
+    assert created.status_code == 201, created.text
+    class_id = created.json()["id"]
+    created_second = client.post(f"/api/datasets/{dataset_id}/classes", json={"name": "dog", "color": "#22c55e"})
+    assert created_second.status_code == 201, created_second.text
+
+    image = client.post(
+        f"/api/datasets/{dataset_id}/images/upload",
+        files={"files": ("cat.png", png_bytes(), "image/png")},
+    ).json()["items"][0]
+    saved = client.put(
+        f"/api/datasets/{dataset_id}/images/{image['id']}/annotations",
+        json={"annotations": [{"type": "bbox", "class_id": class_id, "bbox": {"x": 10, "y": 12, "width": 30, "height": 25}}]},
+    )
+    assert saved.status_code == 200, saved.text
+
+    classes = client.get(f"/api/datasets/{dataset_id}/classes")
+    annotations = client.get(f"/api/datasets/{dataset_id}/images/{image['id']}/annotations")
+
+    assert classes.status_code == 200, classes.text
+    assert [(item["name"], item["color"]) for item in classes.json()] == [("cat", "#ef4444"), ("dog", "#22c55e")]
+    assert annotations.status_code == 200, annotations.text
+    assert annotations.json()[0]["label"] == "cat"
+    assert annotations.json()[0]["color"] == "#ef4444"
+
+
 def test_detect_dataset_annotation_validation_and_yolo_round_trip(client):
     dataset_id = create_dataset(client)
     class_response = client.post(f"/api/datasets/{dataset_id}/classes", json={"name": "cat", "color": "#ff0000"})

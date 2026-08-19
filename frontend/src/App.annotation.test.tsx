@@ -117,7 +117,7 @@ describe("AnnotationView persistence", () => {
     const form = container?.querySelector<HTMLFormElement>(".annotation-class-form");
     await act(async () => { form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
 
-    expect(onCreateClass).toHaveBeenCalledWith("person", "#3157d5");
+    expect(onCreateClass).toHaveBeenCalledWith("person", "#ef4444");
   });
 
   it("allows changing an existing shape to another class", () => {

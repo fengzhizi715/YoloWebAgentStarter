@@ -114,4 +114,3 @@ def delete_class(session: Session, dataset_id: str, class_id: str) -> None:
         item.class_index = index
     refresh_dataset_counts(session, dataset_id)
     session.commit()
-
