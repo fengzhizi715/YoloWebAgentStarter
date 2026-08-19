@@ -30,7 +30,7 @@ h1, h2, p { margin: 0; }
 .starter-local-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid #dbe2f1; border-radius: 7px; color: #3157d5; background: #f5f7ff; font-size: 12px; font-weight: 650; }
 .starter-local-badge svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .starter-layout { min-height: calc(100vh - 62px); display: grid; grid-template-columns: 232px minmax(0, 1fr); }
-.starter-sidebar { display: grid; grid-template-rows: auto auto 1fr auto; gap: 24px; padding: 28px 16px 20px; border-right: 1px solid #e7eaf0; background: #fff; }
+.starter-sidebar { position: sticky; top: 62px; z-index: 10; align-self: start; box-sizing: border-box; height: calc(100vh - 62px); overflow-y: auto; overscroll-behavior: contain; display: grid; grid-template-rows: auto auto 1fr auto; gap: 24px; padding: 28px 16px 20px; border-right: 1px solid #e7eaf0; background: #fff; }
 .starter-workspace-brand { display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 12px; padding: 0 8px; }
 .starter-workspace-mark { width: 40px; height: 40px; border-radius: 8px; font-size: 20px; }
 .starter-workspace-brand strong { display: block; color: #20293b; font-size: 14px; line-height: 18px; }
