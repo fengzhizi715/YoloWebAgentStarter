@@ -148,7 +148,7 @@ describe("AnnotationCanvas OBB interactions", () => {
     act(() => window.dispatchEvent(new Event("pointerup", { bubbles: true })));
     act(() => stage?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
 
-    expect(onChange).toHaveBeenCalledWith([{ class_id: "cls-1", type: "bbox", bbox: { x: 10, y: 10, width: 50, height: 40 }, source: "manual" }]);
+    expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ class_id: "cls-1", type: "bbox", bbox: { x: 10, y: 10, width: 50, height: 40 }, source: "manual" })]);
   });
 
   it("blocks drawing until a class is selected", async () => {

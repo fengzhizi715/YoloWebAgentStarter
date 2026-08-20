@@ -19,6 +19,8 @@ interface Props {
   classes: ClassLabel[];
   annotations: Annotation[];
   activeClassId: string;
+  selectedAnnotationId?: string | null;
+  onSelectAnnotation?: (id: string | null) => void;
   taskType: TaskType;
   onChange: (annotations: AnnotationDraft[]) => void;
   onSamBox?: (box: BBox) => Promise<void>;
@@ -34,7 +36,7 @@ type DrawingTool = "bbox" | "polygon" | "obb" | "sam" | "sam_point";
 
 const taskTool = (taskType: TaskType): DrawingTool => ({ detect: "bbox", segment: "polygon", obb: "obb", classify: "bbox" } satisfies Record<TaskType, DrawingTool>)[taskType];
 
-export function AnnotationCanvas({ image, classes, annotations, activeClassId, taskType, onChange, onSamBox, onSamPoints, samBusy = false, samCapabilities }: Props) {
+export function AnnotationCanvas({ image, classes, annotations, activeClassId, selectedAnnotationId, onSelectAnnotation, taskType, onChange, onSamBox, onSamPoints, samBusy = false, samCapabilities }: Props) {
   const [imageElement, setImageElement] = useState<HTMLImageElement>();
   const [tool, setTool] = useState<DrawingTool>(() => taskTool(taskType));
   const [dragStart, setDragStart] = useState<[number, number]>();
@@ -72,8 +74,9 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
   }, [samCapabilities?.point_prompt_available, tool]);
 
   const scale = useMemo(() => ({ x: displaySize.width / image.width, y: displaySize.height / image.height }), [displaySize, image]);
-  const selectedObb = annotations.find((item) => item.id === selectedObbId && item.type === "obb");
-  const selectedBbox = annotations.find((item) => item.id === selectedBboxId && item.type === "bbox");
+  const effectiveSelectedAnnotationId = selectedAnnotationId !== undefined ? selectedAnnotationId : selectedObbId ?? selectedBboxId;
+  const selectedObb = annotations.find((item) => item.id === effectiveSelectedAnnotationId && item.type === "obb");
+  const selectedBbox = annotations.find((item) => item.id === effectiveSelectedAnnotationId && item.type === "bbox");
 
   useEffect(() => {
     const node = selectedObb ? obbRefs.current[selectedObb.id] : selectedBbox ? bboxRefs.current[selectedBbox.id] : null;
@@ -121,13 +124,14 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
     onChange(annotations.map((item) => item.id === id && item.type === "obb" ? { ...toDraft(item), obb: updated } : toDraft(item)));
   };
   const removeSelectedObb = () => {
-    if (!selectedObbId) return;
-    onChange(annotations.filter((item) => item.id !== selectedObbId).map(toDraft));
+    if (!selectedObb?.id) return;
+    onChange(annotations.filter((item) => item.id !== selectedObb.id).map(toDraft));
     setSelectedObbId(undefined);
+    onSelectAnnotation?.(null);
   };
   const finishPolygon = () => {
     if (polygonPoints.length < 3) return;
-    onChange([...annotations.map(toDraft), { class_id: activeClassId, type: "polygon", polygon: polygonPoints.map(toOriginal), source: "manual" }]);
+    onChange([...annotations.map(toDraft), { id: newDraftId(), class_id: activeClassId, type: "polygon", polygon: polygonPoints.map(toOriginal), source: "manual" }]);
     setPolygonPoints([]);
   };
   const samConfigured = samCapabilities?.model_configured ?? false;
@@ -185,7 +189,7 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
               const displayBox = normalizeBBox(dragStart, point);
               const box = { x: displayBox.x / scale.x, y: displayBox.y / scale.y, width: displayBox.width / scale.x, height: displayBox.height / scale.y };
               if (box.width >= MIN_SHAPE_SIZE && box.height >= MIN_SHAPE_SIZE) {
-                if (tool === "bbox") onChange([...annotations.map(toDraft), { class_id: activeClassId, type: "bbox", bbox: box, source: "manual" }]);
+                if (tool === "bbox") onChange([...annotations.map(toDraft), { id: newDraftId(), class_id: activeClassId, type: "bbox", bbox: box, source: "manual" }]);
                 if (tool === "obb") {
                   const id = `draft-obb-${Date.now()}-${Math.random().toString(16).slice(2)}`;
                   onChange([...annotations.map(toDraft), { id, class_id: activeClassId, type: "obb", obb: clampOBBToImage({ cx: box.x + box.width / 2, cy: box.y + box.height / 2, width: box.width, height: box.height, angle }, image.width, image.height), source: "manual" }]);
@@ -205,7 +209,7 @@ export function AnnotationCanvas({ image, classes, annotations, activeClassId, t
           >
             <Layer>
               <KonvaImage image={imageElement} width={displaySize.width} height={displaySize.height} listening={false} />
-              {annotations.map((annotation) => annotation.type === "obb" && annotation.obb ? <EditableObb key={annotation.id} annotation={annotation} stageObb={toStageObb(annotation.obb)} selected={annotation.id === selectedObbId} setNodeRef={(node) => { obbRefs.current[annotation.id] = node; }} onSelect={() => { setSelectedObbId(annotation.id); setSelectedBboxId(undefined); }} onChange={(updated) => replaceObb(annotation.id, updated)} /> : annotation.type === "bbox" && annotation.bbox ? <EditableBbox key={annotation.id} annotation={annotation} scale={scale} selected={annotation.id === selectedBboxId} setNodeRef={(node) => { bboxRefs.current[annotation.id] = node; }} onSelect={() => { setSelectedBboxId(annotation.id); setSelectedObbId(undefined); }} onChange={(updated) => replaceBbox(annotation.id, updated)} /> : <AnnotationShape key={annotation.id} annotation={annotation} scale={scale} />)}
+              {annotations.map((annotation) => annotation.type === "obb" && annotation.obb ? <EditableObb key={annotation.id} annotation={annotation} stageObb={toStageObb(annotation.obb)} selected={annotation.id === effectiveSelectedAnnotationId} setNodeRef={(node) => { obbRefs.current[annotation.id] = node; }} onSelect={() => { setSelectedObbId(annotation.id); setSelectedBboxId(undefined); onSelectAnnotation?.(annotation.id); }} onChange={(updated) => replaceObb(annotation.id, updated)} /> : annotation.type === "bbox" && annotation.bbox ? <EditableBbox key={annotation.id} annotation={annotation} scale={scale} selected={annotation.id === effectiveSelectedAnnotationId} setNodeRef={(node) => { bboxRefs.current[annotation.id] = node; }} onSelect={() => { setSelectedBboxId(annotation.id); setSelectedObbId(undefined); onSelectAnnotation?.(annotation.id); }} onChange={(updated) => replaceBbox(annotation.id, updated)} /> : <AnnotationShape key={annotation.id} annotation={annotation} scale={scale} onSelect={() => onSelectAnnotation?.(annotation.id)} />)}
               {dragStart && dragEnd && tool !== "obb" && <Rect {...displayBox(normalizeBBox(dragStart, dragEnd))} stroke="#f97316" dash={[6, 4]} />}
               {draftObb && <Rect x={draftObb.x + draftObb.width / 2} y={draftObb.y + draftObb.height / 2} width={draftObb.width} height={draftObb.height} offsetX={draftObb.width / 2} offsetY={draftObb.height / 2} rotation={angle} stroke="#f97316" dash={[6, 4]} />}
               {polygonPoints.length > 0 && <Line points={polygonPoints.flat()} stroke="#f97316" strokeWidth={2} closed={false} dash={[6, 4]} />}
@@ -242,12 +246,14 @@ function toDraft(annotation: Annotation): AnnotationDraft {
   return { id: annotation.id, class_id: annotation.class_id, type: annotation.type, bbox: annotation.bbox ?? undefined, polygon: annotation.polygon ?? undefined, obb: annotation.obb ?? undefined, source: annotation.source };
 }
 
-function AnnotationShape({ annotation, scale }: { annotation: Annotation; scale: { x: number; y: number } }) {
+function AnnotationShape({ annotation, scale, onSelect }: { annotation: Annotation; scale: { x: number; y: number }; onSelect: () => void }) {
   if (annotation.type === "bbox" && annotation.bbox) {
     return <Rect x={annotation.bbox.x * scale.x} y={annotation.bbox.y * scale.y} width={annotation.bbox.width * scale.x} height={annotation.bbox.height * scale.y} stroke={annotation.color} strokeWidth={2} />;
   }
   if (annotation.polygon) {
-    return <Line points={annotation.polygon.flatMap(([x, y]) => [x * scale.x, y * scale.y])} closed stroke={annotation.color} fill={`${annotation.color}33`} strokeWidth={2} />;
+    return <Line points={annotation.polygon.flatMap(([x, y]) => [x * scale.x, y * scale.y])} closed stroke={annotation.color} fill={`${annotation.color}33`} strokeWidth={2} onMouseDown={(event) => { event.cancelBubble = true; onSelect(); }} onClick={onSelect} onTap={onSelect} />;
   }
   return null;
 }
+
+function newDraftId(): string { return `draft-${Date.now()}-${Math.random().toString(16).slice(2)}`; }

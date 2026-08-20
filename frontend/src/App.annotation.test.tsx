@@ -82,6 +82,36 @@ describe("AnnotationView persistence", () => {
     ]);
   });
 
+  it("deletes one annotation from the list before saving", () => {
+    const onSave = vi.fn();
+    act(() => {
+      root?.render(<AnnotationView dataset={dataset} image={image} classes={classes} annotations={[annotation]} activeClassId="cls-1" onClassChange={vi.fn()} onBack={vi.fn()} onSave={onSave} onSam={vi.fn()} onSamPoints={vi.fn()} busy={false} />);
+    });
+
+    const deleteButton = container?.querySelector<HTMLButtonElement>("button[aria-label='删除标注 1']");
+    expect(deleteButton).toBeTruthy();
+    act(() => deleteButton?.click());
+    const save = Array.from(container?.querySelectorAll<HTMLButtonElement>("button") ?? []).find((item) => item.textContent === "保存标注");
+    act(() => save?.click());
+
+    expect(onSave).toHaveBeenCalledWith([]);
+  });
+
+  it("deletes the selected annotation with Delete", () => {
+    const onSave = vi.fn();
+    act(() => {
+      root?.render(<AnnotationView dataset={dataset} image={image} classes={classes} annotations={[annotation]} activeClassId="cls-1" onClassChange={vi.fn()} onBack={vi.fn()} onSave={onSave} onSam={vi.fn()} onSamPoints={vi.fn()} busy={false} />);
+    });
+
+    const row = container?.querySelector<HTMLDivElement>(".shape-row");
+    act(() => row?.click());
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete" })));
+    const save = Array.from(container?.querySelectorAll<HTMLButtonElement>("button") ?? []).find((item) => item.textContent === "保存标注");
+    act(() => save?.click());
+
+    expect(onSave).toHaveBeenCalledWith([]);
+  });
+
   it("keeps previous and next navigation available by button and keyboard", () => {
     const onPrevious = vi.fn();
     const onNext = vi.fn();

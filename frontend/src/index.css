@@ -226,3 +226,9 @@ input:focus, select:focus, textarea:focus { border-color: #6682e5; box-shadow: 0
   .settings-section-layout { grid-template-columns: 1fr; }.settings-section-nav { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }.settings-section-nav-item { grid-template-columns: auto minmax(0, 1fr); }.settings-nav-badge { display: none; }
   .settings-card { padding: 17px; }.settings-card-head { grid-template-columns: auto minmax(0, 1fr); }.settings-card-head .settings-status { grid-column: 2; justify-self: start; }.settings-form-grid { grid-template-columns: 1fr; }.language-segment { width: 100%; }.language-segment button { flex: 1; min-width: 0; }.settings-footer { align-items: flex-start; flex-direction: column; }
 }
+
+.shape-row { cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+.shape-row:hover, .shape-row.active { border-radius: 7px; background: #f3f6ff; }
+.annotation-delete-button { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 6px; color: #8994a8; background: transparent; cursor: pointer; }
+.annotation-delete-button:hover, .annotation-delete-button:focus-visible { border-color: #efc0c0; color: #b83a3a; background: #fff0f0; }
+.annotation-delete-button svg { display: block; }
