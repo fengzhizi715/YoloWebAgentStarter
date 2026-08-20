@@ -14,6 +14,7 @@ from app.core.storage import Storage
 from app.training.runtime.queue import training_queue
 from app.models.evaluation import YoloEvaluationRunner
 from app.logs.service import configure_runtime_logging
+from app.auto_annotation.queue import auto_annotation_queue
 
 
 def create_app(settings: Settings | None = None, *, run_migrations: bool = True) -> FastAPI:
@@ -31,8 +32,10 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
         # Starter runtime handler again after migrations have completed.
         configure_runtime_logging(resolved)
         training_queue.configure(database.session_factory, storage)
+        auto_annotation_queue.configure(database.session_factory, storage)
         YoloEvaluationRunner(database.session_factory, storage).recover_orphaned()
         training_queue.recover_orphaned()
+        auto_annotation_queue.recover_orphaned()
         import logging
 
         logging.getLogger("ywa").info("YoloWebAgentStarter runtime initialized")

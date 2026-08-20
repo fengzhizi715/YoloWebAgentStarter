@@ -9,6 +9,8 @@ from app.core.config import Settings
 from app.training.service import TrainingService
 from app.training.runtime.queue import training_queue
 from app.models.evaluation import YoloEvaluationRunner
+from app.auto_annotation.queue import auto_annotation_queue
+from app.auto_annotation.service import AutoAnnotationService
 
 
 def get_session(request: Request) -> Iterator[Session]:
@@ -29,3 +31,7 @@ def get_training_service(request: Request) -> TrainingService:
 
 def get_evaluation_runner(request: Request) -> YoloEvaluationRunner:
     return YoloEvaluationRunner(request.app.state.database.session_factory, request.app.state.storage)
+
+
+def get_auto_annotation_service(request: Request) -> AutoAnnotationService:
+    return AutoAnnotationService(request.app.state.database.session_factory, request.app.state.storage, auto_annotation_queue)

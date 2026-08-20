@@ -7,6 +7,7 @@ import { TrainingView } from "./pages/TrainingView";
 import { ModelsView } from "./pages/ModelsView";
 import { SettingsView } from "./pages/SettingsView";
 import { LogsView } from "./pages/LogsView";
+import { AutoAnnotationModal } from "./components/AutoAnnotationModal";
 import { readLocale, saveLocale, type AppLocale } from "./locale";
 import type { Annotation, BBox, ClassLabel, Dataset, DatasetQualityReport, DuplicateReport, ImageItem, SamCapabilities, SamPrediction, SplitName, TaskType, ValidationReport } from "./types";
 
@@ -218,6 +219,7 @@ export default function App() {
           onImport={(file, name, taskType, format) => run(async () => { const result = format === "coco" ? await api.importCoco(file, name, taskType) : await api.importYolo(file, name, taskType); await refreshDatasets(); await loadDataset(result.dataset); setNotice(`已导入 ${result.imported_images} 张图片和 ${result.imported_annotations} 个标注`); })}
           onValidate={(dataset) => runResult(() => api.validateDataset(dataset.id))}
           onQuality={(dataset) => runResult(() => api.qualityReport(dataset.id))}
+          onAutoAnnotationComplete={() => void refreshDatasets()}
           onContinueAnnotation={(dataset) => void continueAnnotation(dataset)}
           onUpload={(dataset, files, split) => run(async () => {
             const result = await api.uploadImages(dataset.id, files, split);
@@ -256,6 +258,7 @@ export function DatasetHome(props: {
   onImport: (file: File, name: string, type: TaskType, format: "yolo" | "coco") => void;
   onValidate: (dataset: Dataset) => Promise<ValidationReport | undefined>;
   onQuality: (dataset: Dataset) => Promise<DatasetQualityReport | undefined>;
+  onAutoAnnotationComplete?: () => void;
   onContinueAnnotation: (dataset: Dataset) => void;
   onUpload: (dataset: Dataset, files: File[], split: SplitName) => void;
   onTrain: (dataset: Dataset) => void;
@@ -281,6 +284,7 @@ export function DatasetHome(props: {
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadFileRef = useRef<HTMLInputElement>(null);
   const [draggingImages, setDraggingImages] = useState(false);
+  const [autoAnnotationTarget, setAutoAnnotationTarget] = useState<Dataset>();
 
   const closeDialog = () => {
     setDialog(null);
@@ -359,6 +363,7 @@ export function DatasetHome(props: {
           <button className="button primary dataset-primary-action" disabled={props.busy || !dataset.image_count} onClick={() => props.onContinueAnnotation(dataset)}>继续标注</button>
           <div className="dataset-card-actions">
             <button className="button" disabled={props.busy} onClick={() => props.onTrain(dataset)}>训练</button>
+            <button className="button dataset-auto-annotation-action" disabled={props.busy || !dataset.image_count} onClick={() => setAutoAnnotationTarget(dataset)}>自动标注</button>
             <button className="button" disabled={props.busy || !dataset.image_count} onClick={() => openExport(dataset)}>导出数据集</button>
             <button className="button" disabled={props.busy || !dataset.image_count} onClick={() => void toggleDuplicates(dataset)}>{isReportOpen(dataset.id, "duplicates") ? "收起重复图" : "重复/相似图"}</button>
             <button className="button" disabled={props.busy} onClick={() => void toggleValidation(dataset)}>{isReportOpen(dataset.id, "validation") ? "收起校验" : "运行校验"}</button>
@@ -372,6 +377,7 @@ export function DatasetHome(props: {
         {!props.datasets.length && <section className="dataset-empty-card"><span className="dataset-empty-icon">□</span><h2>还没有数据集</h2><p>新建一个空数据集，或导入已有的 YOLO ZIP 数据集。</p><div><button className="button" onClick={() => setDialog("import")}>导入数据</button><button className="button primary" onClick={() => setDialog("create")}>新建数据集</button></div></section>}
       </div>
     </section>
+    {autoAnnotationTarget && <AutoAnnotationModal dataset={autoAnnotationTarget} onClose={() => setAutoAnnotationTarget(undefined)} onChanged={() => props.onAutoAnnotationComplete?.()} />}
     {dialog && <div className="modal-backdrop data-exchange-backdrop" role="presentation" onMouseDown={closeDialog}>
       <section className="dataset-dialog data-exchange-dialog" role="dialog" aria-modal="true" aria-labelledby="dataset-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
         <header className="data-exchange-header"><div><span className="eyebrow">{dialog === "create" ? "NEW DATASET" : "IMPORT CENTER"}</span><h2 id="dataset-dialog-title">{dialog === "create" ? "新建数据集" : "导入数据集"}</h2><p>{dialog === "create" ? "创建后即可上传图片并开始标注。" : "选择格式、任务类型和压缩包，将已有标注导入本地工作区。"}</p></div><button className="icon-button" onClick={closeDialog} aria-label="关闭">×</button></header>

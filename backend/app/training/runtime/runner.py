@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.models import TrainingTask
 from app.core.time import utc_now
 from app.core.storage import Storage
+from app.core.local_compute import local_compute_gate
 from app.training.artifacts.checkpoints import checkpoint_paths
 from app.training.observability.log_store import TrainingLogStore
 from app.training.observability.metrics import TrainingMetricsParser
@@ -46,33 +47,38 @@ class TrainingRunner:
             if task is None:
                 return
             log_store = TrainingLogStore(task.logs_path or "train.log")
-            log_store.append(f"Training started for task {task.id}.")
-            command = self._command(task)
-            log_store.append("Command: " + " ".join(command))
-            try:
-                process = subprocess.Popen(
-                    command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                    shell=False,
-                    start_new_session=os.name == "posix",
-                )
-                process_registry.register(task_id, process)
+            log_store.append(f"Training task {task.id} is waiting for the local compute slot.")
+            with local_compute_gate.acquire():
                 if self._stop_requested(task_id):
-                    process_registry.request_stop(task_id)
-                assert process.stdout is not None
-                for line in process.stdout:
-                    clean_line = line.rstrip("\n")
-                    log_store.append(clean_line)
-                    self._update_progress(task_id, clean_line)
-                return_code = process.wait()
-            except Exception as exc:
-                log_store.append(f"Training process failed to start or read output: {exc}")
-                self._finish(task_id, -1, log_store, process_error=str(exc))
-                return
-            self._finish(task_id, return_code, log_store)
+                    self._finish(task_id, -1, log_store)
+                    return
+                log_store.append(f"Training started for task {task.id}.")
+                command = self._command(task)
+                log_store.append("Command: " + " ".join(command))
+                try:
+                    process = subprocess.Popen(
+                        command,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1,
+                        shell=False,
+                        start_new_session=os.name == "posix",
+                    )
+                    process_registry.register(task_id, process)
+                    if self._stop_requested(task_id):
+                        process_registry.request_stop(task_id)
+                    assert process.stdout is not None
+                    for line in process.stdout:
+                        clean_line = line.rstrip("\n")
+                        log_store.append(clean_line)
+                        self._update_progress(task_id, clean_line)
+                    return_code = process.wait()
+                except Exception as exc:
+                    log_store.append(f"Training process failed to start or read output: {exc}")
+                    self._finish(task_id, -1, log_store, process_error=str(exc))
+                    return
+                self._finish(task_id, return_code, log_store)
         finally:
             process_registry.unregister(task_id)
             self.queue.on_finished(task_id)

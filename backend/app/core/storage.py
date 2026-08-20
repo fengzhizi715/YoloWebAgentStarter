@@ -30,6 +30,7 @@ class Storage:
         self.exports_dir = self.data_dir / "exports"
         self.training_dir = self.data_dir / "runs" / "training"
         self.evaluation_dir = self.data_dir / "runs" / "evaluation"
+        self.auto_annotation_dir = self.data_dir / "runs" / "auto-annotation"
         self.models_dir = self.data_dir / "models"
         self.tmp_dir = self.data_dir / "tmp"
 
@@ -161,6 +162,13 @@ class Storage:
         candidate = (self.evaluation_dir / evaluation_id).resolve()
         if not _is_within(candidate, self.evaluation_dir.resolve()):
             raise ValidationError("unsafe_path", "Evaluation task path escapes the managed evaluation directory.")
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+
+    def auto_annotation_task_dir(self, task_id: str) -> Path:
+        candidate = (self.auto_annotation_dir / task_id).resolve()
+        if not _is_within(candidate, self.auto_annotation_dir.resolve()):
+            raise ValidationError("unsafe_path", "Auto-annotation task path escapes the managed auto-annotation directory.")
         candidate.mkdir(parents=True, exist_ok=True)
         return candidate
 

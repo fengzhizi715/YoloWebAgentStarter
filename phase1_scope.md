@@ -49,7 +49,8 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | segment polygon 标注 | included | included | 绘制、编辑、保存，至少 3 点 |
 | OBB / classify | included | included | Starter API、UI、schema、YOLO 交换与训练闭环可用 |
 | pose | excluded | included | 不在 Community v2 范围 |
-| SAM 交互建议 | included | included | 仅 segment 框/点提示，多边形须人工确认保存；不含批量自动标注 |
+| SAM 交互建议 | included | included | 仅 segment 框/点提示，多边形须人工确认保存 |
+| 数据集级自动标注 | included | included | 从数据集卡片启动本地受管 PT 任务，支持显式类别映射、置信度/IoU、二次确认清理旧标注、进度、日志和取消；与训练在本机互斥，结果必须人工审核 |
 | SAM 设置 | included | included | 本地设置页管理启用状态、模型、设备、推理尺寸和无模型回退行为 |
 | 基础数据集校验 | included | included | 坐标、类别、空标注、格式问题可返回 |
 | 高级质量报告 | included | included | 覆盖率、类别分布、小目标、重复 bbox、重复/相似图片；不含 Agent 诊断 |
@@ -118,7 +119,8 @@ Community v2 必须在全新环境中完成：
 6. 获得并管理 best.pt / last.pt。
 7. 下载 PT，并从 PT 导出和下载 ONNX FP32。
 8. 在 segment 数据集上配置 SAM（可选）并确认交互式建议后保存 polygon 标注。
-9. 全流程不读取 Enterprise 数据库、虚拟环境或文件目录。
+9. 在数据集卡片选择匹配的受管 PT 运行自动标注，审核 `auto` 来源结果后再训练。
+10. 全流程不读取 Enterprise 数据库、虚拟环境或文件目录。
 
 ## 5. 变更规则
 

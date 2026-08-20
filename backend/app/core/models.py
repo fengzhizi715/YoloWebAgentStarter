@@ -30,6 +30,7 @@ class Dataset(Base, TimestampMixin):
     annotations: Mapped[list["Annotation"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
     training_profiles: Mapped[list["TrainingProfile"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
     training_tasks: Mapped[list["TrainingTask"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
+    auto_annotation_tasks: Mapped[list["AutoAnnotationTask"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
     model_versions: Mapped[list["ModelVersion"]] = relationship(back_populates="dataset")
 
 
@@ -201,6 +202,7 @@ class ModelVersion(Base, TimestampMixin):
     dataset: Mapped[Dataset | None] = relationship(back_populates="model_versions")
     training_task: Mapped[TrainingTask | None] = relationship(back_populates="model_versions", foreign_keys=[training_task_id])
     source_model: Mapped["ModelVersion | None"] = relationship(remote_side=[id], foreign_keys=[source_model_id])
+    auto_annotation_tasks: Mapped[list["AutoAnnotationTask"]] = relationship(back_populates="model", passive_deletes=True)
 
 
 class ModelTestRecord(Base, TimestampMixin):
@@ -235,3 +237,34 @@ class ModelEvaluationRecord(Base, TimestampMixin):
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
     model: Mapped["ModelVersion"] = relationship()
+
+
+class AutoAnnotationTask(Base, TimestampMixin):
+    __tablename__ = "auto_annotation_tasks"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'running', 'completed', 'failed', 'stopped')", name="ck_auto_annotation_task_status"),
+        CheckConstraint("task_type IN ('detect', 'segment', 'obb', 'classify')", name="ck_auto_annotation_task_type"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), index=True, nullable=False)
+    model_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id", ondelete="CASCADE"), index=True, nullable=False)
+    task_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True, nullable=False)
+    clean_old_annotations: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.25, nullable=False)
+    iou: Mapped[float] = mapped_column(Float, default=0.45, nullable=False)
+    class_mapping: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    total_images: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    processed_images: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_annotations: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    skipped_images: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    progress_percent: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    logs_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stop_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    dataset: Mapped[Dataset] = relationship(back_populates="auto_annotation_tasks")
+    model: Mapped["ModelVersion"] = relationship(back_populates="auto_annotation_tasks")

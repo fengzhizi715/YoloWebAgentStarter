@@ -63,7 +63,7 @@ export interface Annotation {
   bbox: BBox | null;
   polygon: [number, number][] | null;
   obb: OBB | null;
-  source: "manual" | "imported" | "sam";
+  source: "manual" | "imported" | "sam" | "auto";
   created_at: string;
   updated_at: string;
 }
@@ -259,4 +259,29 @@ export interface InferenceDetection { class_index: number; class_name: string; c
 export interface InferenceResult { model_id: string; task_type: TaskType; detections: InferenceDetection[]; inference_time_ms: number; }
 export interface ModelComparison { dataset_id: string; baseline: { id: string; name: string; metrics: Record<string, number> }; candidate: { id: string; name: string; metrics: Record<string, number> }; deltas: Record<string, number | null>; suggestions: string[]; }
 export interface ModelTestRecord { id: string; model_id: string; file_name: string; result_json: InferenceResult; created_at: string; }
+export type AutoAnnotationStatus = "pending" | "running" | "completed" | "failed" | "stopped";
+export interface AutoAnnotationTask {
+  id: string;
+  dataset_id: string;
+  model_id: string;
+  task_type: TaskType;
+  status: AutoAnnotationStatus;
+  clean_old_annotations: boolean;
+  confidence: number;
+  iou: number;
+  class_mapping: Record<string, string>;
+  total_images: number;
+  processed_images: number;
+  created_annotations: number;
+  skipped_images: number;
+  progress_percent: number;
+  logs_path: string | null;
+  error_message: string | null;
+  stop_requested: boolean;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+export interface AutoAnnotationLog { task_id: string; logs: string; line_count: number; }
 export interface ModelEvaluationRecord { id: string; model_id: string; dataset_id: string; split: SplitName; status: "pending" | "running" | "completed" | "failed"; confidence: number; iou: number; result_json: { split?: SplitName; task_type?: TaskType; metrics?: Record<string, number>; artifacts?: Record<string, string | null>; error_samples?: Array<{ image_file?: string; class_index?: number; confidence?: number; type: string; message: string }> }; error_message: string | null; export_path: string | null; data_path: string | null; run_dir: string | null; logs_path: string | null; created_at: string; started_at: string | null; finished_at: string | null; }

@@ -11,7 +11,7 @@ export type AnnotationDraft = {
   bbox?: BBox;
   polygon?: [number, number][];
   obb?: OBB;
-  source: "manual" | "imported" | "sam";
+  source: "manual" | "imported" | "sam" | "auto";
 };
 
 interface Props {

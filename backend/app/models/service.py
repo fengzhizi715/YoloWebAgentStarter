@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.ids import new_id
-from app.core.models import ClassLabel, ImageItem, ModelEvaluationRecord, ModelTestRecord, ModelVersion, TrainingTask
+from app.core.models import AutoAnnotationTask, ClassLabel, ImageItem, ModelEvaluationRecord, ModelTestRecord, ModelVersion, TrainingTask
 from app.core.storage import Storage
 from app.core.time import utc_now
 from app.models import onnx
@@ -136,6 +136,13 @@ class ModelService:
 
     def delete_model(self, session: Session, model_id: str) -> None:
         model = self.get_model(session, model_id)
+        auto_annotation_task = session.scalar(
+            select(AutoAnnotationTask.id)
+            .where(AutoAnnotationTask.model_id == model.id)
+            .limit(1)
+        )
+        if auto_annotation_task is not None:
+            raise ConflictError("model_in_use", "Archive this model instead; it is retained as auto-annotation task history.")
         self.storage.managed_model_path(model.model_path)
         session.delete(model)
         try:

@@ -10,7 +10,7 @@ from app.core.task_types import TaskType
 
 SplitName = Literal["train", "val", "test"]
 AnnotationType = Literal["bbox", "polygon", "obb", "classify"]
-AnnotationSource = Literal["manual", "imported", "sam"]
+AnnotationSource = Literal["manual", "imported", "sam", "auto"]
 
 
 class ORMModel(BaseModel):

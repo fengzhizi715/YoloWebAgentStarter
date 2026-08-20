@@ -7,7 +7,7 @@ YoloWebAgentStarter 是 YoloWebAgent 的独立社区版。运行时不得 import
 - Community v2 支持 `detect`、`segment`、`obb` 与 `classify`；其中 polygon 是 segment 的标注表示。
 - 核心流程：图片 → 数据集 → bbox/polygon/OBB/分类标注 → 校验 → YOLO 导入/导出 → 本地训练 → 受管 PT/ONNX 产物。SAM 仅用于 segment 的交互式建议，必须由用户确认后走普通标注保存流程。
 - 训练在本地以队列方式运行；模型版本只能由受管训练产物创建。
-- Auth、RBAC、License、Agent、Workflow、Evaluation、Deployment、pose、批量自动标注和文本提示分割均不在范围内。
+- Auth、RBAC、License、Agent、Workflow、Evaluation、Deployment、pose、无人值守 Agent 自动化和文本提示分割均不在范围内；数据集级自动标注仅允许本地受管 PT，且必须人工审核。
 - 服务仅面向本地单用户，默认绑定 `127.0.0.1`。
 
 ## 工程规则

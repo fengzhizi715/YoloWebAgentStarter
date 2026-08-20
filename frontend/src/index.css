@@ -240,3 +240,34 @@ input:focus, select:focus, textarea:focus { border-color: #6682e5; box-shadow: 0
 .leave-confirm-dialog { max-width: 440px; }
 .annotation-save-state { margin-left: 6px; color: #28723e; font-weight: 700; }
 .annotation-save-state.dirty { color: #b06a00; }
+.dataset-auto-annotation-action { color: #3157d5; border-color: #c8d5fa; background: #f6f8ff; }
+.auto-annotation-dialog { width: min(100%, 560px); }
+.auto-annotation-dialog select { width: 100%; }
+.auto-annotation-model-hint { margin: -7px 0 0; }
+.auto-annotation-mapping { display: grid; gap: 8px; padding: 11px 12px; border: 1px solid #e1e6ef; border-radius: 8px; background: #fafbfe; }
+.auto-annotation-mapping > div { display: grid; gap: 3px; }.auto-annotation-mapping small { color: #8994a8; font-size: 11px; line-height: 1.4; }
+.auto-annotation-mapping label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr); align-items: center; gap: 10px; color: #536077; font-size: 12px; }
+.auto-annotation-mapping select { padding: 6px 8px; font-size: 12px; }
+.auto-annotation-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.auto-annotation-controls label { gap: 8px; }
+.auto-annotation-controls input[type="range"] { width: 100%; accent-color: #3157d5; }
+.auto-annotation-checkbox { display: flex !important; grid-template-columns: none !important; align-items: flex-start; gap: 9px !important; padding: 11px 12px; border: 1px solid #e1e6ef; border-radius: 8px; background: #fafbfe; }
+.auto-annotation-checkbox input { margin-top: 2px; accent-color: #3157d5; }
+.auto-annotation-checkbox span { display: grid; gap: 4px; }
+.auto-annotation-checkbox small { color: #8994a8; font-size: 11px; font-weight: 400; line-height: 1.45; }
+.auto-annotation-checkbox.danger { border-color: #efc0c0; color: #9a3434; background: #fff7f7; }
+.auto-annotation-empty { padding: 22px 12px; border: 1px dashed #cbd4e5; border-radius: 8px; color: #7d8799; text-align: center; }
+.auto-annotation-status { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: #71809b; font-size: 12px; }
+.auto-annotation-status > div { display: flex; align-items: center; gap: 8px; }
+.auto-annotation-status strong { color: #40506b; }
+.auto-annotation-status b { color: #3157d5; font-size: 18px; }
+.auto-annotation-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; }
+.auto-annotation-status-dot.running, .auto-annotation-status-dot.pending { box-shadow: 0 0 0 4px #fff3dd; }
+.auto-annotation-status-dot.completed { background: #22a653; }
+.auto-annotation-status-dot.failed { background: #c43b3b; }
+.auto-annotation-status-dot.stopped { background: #8b96a8; }
+.auto-annotation-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.auto-annotation-summary span { display: grid; gap: 4px; padding: 10px; border: 1px solid #edf0f4; border-radius: 8px; }
+.auto-annotation-summary small { color: #8994a8; font-size: 10px; }
+.auto-annotation-summary strong { color: #3b4860; font-size: 17px; }
+.auto-annotation-log { max-height: 150px; overflow: auto; margin: 0; padding: 10px; border-radius: 7px; color: #b8c6e8; background: #1c2538; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
