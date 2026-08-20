@@ -66,6 +66,22 @@ describe("AnnotationView persistence", () => {
     expect(container?.textContent).toContain("vehicle-21.png");
   });
 
+  it("filters the image list by train, val and test split", () => {
+    const valImage = { ...secondImage, split: "val" as const };
+    const testImage = { ...image, id: "img-3", file_name: "vehicle-03.png", split: "test" as const };
+    act(() => {
+      root?.render(<AnnotationView dataset={{ ...dataset, image_count: 3 }} image={image} images={[image, valImage, testImage]} onImageSelect={vi.fn()} classes={classes} annotations={[annotation]} activeClassId="cls-1" onClassChange={vi.fn()} onBack={vi.fn()} onSave={vi.fn()} onSam={vi.fn()} onSamPoints={vi.fn()} busy={false} />);
+    });
+
+    expect(container?.querySelectorAll(".annotation-image-item")).toHaveLength(3);
+    const valTab = container?.querySelector<HTMLButtonElement>(".annotation-image-split-tabs button:nth-child(3)");
+    act(() => valTab?.click());
+
+    expect(container?.querySelectorAll(".annotation-image-item")).toHaveLength(1);
+    expect(container?.textContent).toContain("vehicle-02.png");
+    expect(container?.textContent).not.toContain("vehicle-03.png");
+  });
+
   it("saves the edited OBB draft without its client-only id", () => {
     const onSave = vi.fn();
     act(() => {
@@ -80,6 +96,19 @@ describe("AnnotationView persistence", () => {
     expect(onSave).toHaveBeenCalledWith([
       { id: "ann-1", class_id: "cls-1", type: "obb", obb: { cx: 50, cy: 40, width: 60, height: 40, angle: 45 }, source: "manual" },
     ]);
+  });
+
+  it("shows unsaved state after a draft changes", () => {
+    const onDirtyChange = vi.fn();
+    act(() => {
+      root?.render(<AnnotationView dataset={dataset} image={image} classes={classes} annotations={[annotation]} activeClassId="cls-1" onClassChange={vi.fn()} onBack={vi.fn()} onDirtyChange={onDirtyChange} onSave={vi.fn()} onSam={vi.fn()} onSamPoints={vi.fn()} busy={false} />);
+    });
+
+    const rotate = Array.from(container?.querySelectorAll<HTMLButtonElement>("button") ?? []).find((item) => item.textContent === "模拟旋转 OBB");
+    act(() => rotate?.click());
+
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect(container?.textContent).toContain("未保存修改");
   });
 
   it("deletes one annotation from the list before saving", () => {
