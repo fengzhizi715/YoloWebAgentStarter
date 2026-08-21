@@ -151,6 +151,20 @@ describe("AnnotationCanvas OBB interactions", () => {
     expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ class_id: "cls-1", type: "bbox", bbox: { x: 10, y: 10, width: 50, height: 40 }, source: "manual" })]);
   });
 
+  it("clears every local draft after confirmation", async () => {
+    const onChange = vi.fn();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await act(async () => {
+      root?.render(<AnnotationCanvas image={image} classes={classes} annotations={[annotation]} activeClassId="cls-1" taskType="obb" onChange={onChange} />);
+    });
+
+    const clear = Array.from(container?.querySelectorAll<HTMLButtonElement>("button") ?? []).find((item) => item.textContent === "清空全部草稿");
+    act(() => clear?.click());
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith([]);
+    confirm.mockRestore();
+  });
+
   it("blocks drawing until a class is selected", async () => {
     const onChange = vi.fn();
     await act(async () => {
