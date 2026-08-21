@@ -6,8 +6,6 @@
 图片 → 数据集 → 标注 → 校验 → YOLO 导入 / 导出 → 本地训练 → 受管 PT → split 评估 / FP32 ONNX
 ```
 
-> **发布状态：阻断。** 本仓库基于固定的 YoloWebAgent 快照进行选择性派生，但该上游树尚无可核验的顶层许可证或 NOTICE。仓库中的 MIT 文件不能单方面完成再许可；在取得权利人书面授权或可核验上游许可证前，**不得发布公开 release 或宣称为已获授权的开源衍生版本**。请先阅读[来源授权门槛](docs/provenance/UPSTREAM_AUTHORIZATION.md)、[逐模块来源审计](migration_matrix.md)和[source snapshot](source_snapshot.md)。
-
 ## 为什么使用它
 
 - 在本机完成 detect、segment、OBB 和 classify 数据集的标注与训练准备。
