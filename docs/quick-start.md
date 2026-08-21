@@ -41,7 +41,7 @@ npm --prefix frontend install
 
 ## 3. 训练与导出
 
-打开训练工作区，选择与数据集类型匹配的模型名称（例如 `yolo11n.pt`、`yolo11n-seg.pt`、`yolo11n-obb.pt` 或 `yolo11n-cls.pt`），然后选择 CPU、MPS 或 CUDA。存在多个 CUDA 设备时，可选择两个或更多 GPU，将 `device=0,1` 传递给本地 Ultralytics DDP。首次使用命名权重训练时，Ultralytics 可能会下载权重。任务完成后，`best.pt` 和 `last.pt` 会登记到 `data/models/` 下；模型工作区可以下载它们，或生成静态 FP32 ONNX 文件。
+打开训练工作区，选择与数据集类型匹配的 YOLOv8、YOLO11 或 YOLO26 基础权重（例如 `yolov8n.pt`、`yolo11n-seg.pt` 或 `yolo26n-obb.pt`），然后选择 CPU、MPS 或 CUDA。存在多个 CUDA 设备时，可选择两个或更多 GPU，将 `device=0,1` 传递给本地 Ultralytics DDP。首次使用命名权重训练时，Ultralytics 可能会下载权重。任务完成后，`best.pt` 和 `last.pt` 会登记到 `data/models/` 下；模型工作区可以下载它们，或生成静态 FP32 ONNX 文件。
 
 使用左侧边栏的“日志”页面查看本地后端运行日志的有限末尾内容。语言设置会改变工作区外壳以及新的设置/日志页面；该偏好只保存在浏览器中。
 
@@ -66,7 +66,7 @@ SAM 设置页面会将配置持久化到 `YWA_DATA_DIR/settings.json`；运行�
 
 | 现象 | 处理方法 |
 |---|---|
-| 训练失败并出现 `AttributeError: module 'numpy' has no attribute 'trapz'` | 当前环境使用了 NumPy 2.x，与固定版本 `ultralytics==8.3.40` 的校验代码不兼容。请在仓库 `.venv` 中重新安装项目依赖，以使用 NumPy 1.x：`.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt`。 |
+| 训练或校验出现 NumPy 兼容性错误 | Starter 固定使用 `ultralytics==8.4.115` 与 NumPy 1.x 基线。请在仓库 `.venv` 中重新安装项目依赖：`.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt`。 |
 | 依赖解析器报告 NumPy 冲突 | 使用 Python 3.11 或 3.12 重新创建 `.venv`，然后安装固定版本依赖。Python 3.13 不在发布支持范围内。 |
 | API 无法启动 | 确认 `YWA_HOST` 为 `127.0.0.1`，然后执行 `PYTHONPATH=backend .venv/bin/alembic -c backend/alembic.ini upgrade head`。 |
 | 训练任务被拒绝 | 先校验数据集，确保 `train` 和 `val` 都包含已标注图片，并使用与数据集类型匹配的模型系列。 |

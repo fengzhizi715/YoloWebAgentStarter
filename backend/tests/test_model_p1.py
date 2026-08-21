@@ -75,7 +75,7 @@ def test_evaluation_command_keeps_low_confidence_predictions(tmp_path: Path):
 
 
 def test_error_sample_analyzer_reads_ultralytics_detect_json(tmp_path: Path):
-    """Use Ultralytics 8.3.40 itself to produce the detect JSON contract."""
+    """Use the pinned Ultralytics runtime itself to produce the detect JSON contract."""
     from ultralytics.models.yolo.detect.val import DetectionValidator
 
     export = _evaluation_export(tmp_path, "detect", "0 0.5 0.5 0.2 0.2\n")
@@ -85,15 +85,18 @@ def test_error_sample_analyzer_reads_ultralytics_detect_json(tmp_path: Path):
     validator.jdict = []
     validator.class_map = [0]
     validator.is_lvis = False
-    validator.pred_to_json(torch.tensor([[40.0, 40.0, 60.0, 60.0, 0.9, 0.0]]), Path("sample.png"))
+    validator.pred_to_json(
+        {"bboxes": torch.tensor([[40.0, 40.0, 60.0, 60.0]]), "conf": torch.tensor([0.9]), "cls": torch.tensor([0.0])},
+        {"im_file": Path("sample.png")},
+    )
     (run / "predictions.json").write_text(json.dumps(validator.jdict), encoding="utf-8")
 
-    assert set(validator.jdict[0]) == {"image_id", "category_id", "bbox", "score"}
+    assert set(validator.jdict[0]) == {"image_id", "file_name", "category_id", "bbox", "score"}
     assert ErrorSampleAnalyzer().collect(run, 0.25, export, "val") == []
 
 
 def test_error_sample_analyzer_reads_ultralytics_obb_json(tmp_path: Path):
-    """Use Ultralytics 8.3.40 itself to produce the OBB rbox/poly contract."""
+    """Use the pinned Ultralytics runtime itself to produce the OBB rbox/poly contract."""
     from ultralytics.models.yolo.obb.val import OBBValidator
 
     export = _evaluation_export(tmp_path, "obb", "0 0.4 0.4 0.6 0.4 0.6 0.6 0.4 0.6\n")
@@ -102,10 +105,13 @@ def test_error_sample_analyzer_reads_ultralytics_obb_json(tmp_path: Path):
     validator = object.__new__(OBBValidator)
     validator.jdict = []
     validator.class_map = [0]
-    validator.pred_to_json(torch.tensor([[50.0, 50.0, 20.0, 20.0, 0.9, 0.0, 0.0]]), Path("sample.png"))
+    validator.pred_to_json(
+        {"bboxes": torch.tensor([[50.0, 50.0, 20.0, 20.0, 0.0]]), "conf": torch.tensor([0.9]), "cls": torch.tensor([0.0])},
+        {"im_file": Path("sample.png")},
+    )
     (run / "predictions.json").write_text(json.dumps(validator.jdict), encoding="utf-8")
 
-    assert set(validator.jdict[0]) == {"image_id", "category_id", "score", "rbox", "poly"}
+    assert set(validator.jdict[0]) == {"image_id", "file_name", "category_id", "score", "rbox", "poly"}
     assert ErrorSampleAnalyzer().collect(run, 0.25, export, "val") == []
 
 
@@ -122,13 +128,17 @@ def test_error_sample_analyzer_reads_ultralytics_segment_rle(tmp_path: Path):
     mask = np.zeros((100, 100), dtype=np.uint8)
     mask[40:61, 40:61] = 1
     validator.pred_to_json(
-        torch.tensor([[40.0, 40.0, 60.0, 60.0, 0.9, 0.0]]),
-        Path("sample.png"),
-        mask[:, :, None],
+        {
+            "bboxes": torch.tensor([[40.0, 40.0, 60.0, 60.0]]),
+            "conf": torch.tensor([0.9]),
+            "cls": torch.tensor([0.0]),
+            "masks": torch.from_numpy(mask[None, :, :]),
+        },
+        {"im_file": Path("sample.png")},
     )
     (run / "predictions.json").write_text(json.dumps(validator.jdict), encoding="utf-8")
 
-    assert set(validator.jdict[0]) == {"image_id", "category_id", "bbox", "score", "segmentation"}
+    assert set(validator.jdict[0]) == {"image_id", "file_name", "category_id", "bbox", "score", "segmentation"}
     assert validator.jdict[0]["segmentation"]["size"] == [100, 100]
     assert ErrorSampleAnalyzer().collect(run, 0.25, export, "val") == []
 

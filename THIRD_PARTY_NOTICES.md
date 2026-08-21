@@ -12,7 +12,7 @@ This file is a release checklist, not legal advice. Before a public release, the
 
 ## Release-sensitive dependency
 
-`ultralytics==8.3.40` enables training and ONNX export. Ultralytics documents AGPL-3.0 and an alternative Enterprise License for its software and AI models. A publisher must confirm that the intended distribution and any downloaded or trained weights comply with the applicable terms before shipping this Starter or a derivative.
+`ultralytics==8.4.115` enables training and ONNX export, including the official YOLO26 family. Ultralytics documents AGPL-3.0 and an alternative Enterprise License for its software and AI models. A publisher must confirm that the intended distribution and any downloaded or trained weights comply with the applicable terms before shipping this Starter or a derivative. YOLO13 is a separately maintained community implementation, is not bundled into this repository, and is not offered as a built-in training weight.
 
 When `YWA_SAM_MODEL` is configured, the same Ultralytics runtime also performs interactive SAM inference. The publisher must separately verify the selected SAM checkpoint's license and redistribution terms; no checkpoint is bundled by this repository.
 

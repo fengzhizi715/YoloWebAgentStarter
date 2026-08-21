@@ -7,11 +7,10 @@ python-multipart==0.0.19
 Pillow==11.0.0
 opencv-python-headless==4.11.0.86
 PyYAML==6.0.2
-# ultralytics==8.3.40 calculates validation AP with np.trapz, removed in NumPy 2.
-# Keep this constraint platform-independent: its upstream package metadata only
-# applies it on macOS, but the same training failure occurs on Linux and Windows.
+# Keep the NumPy ceiling platform-independent for the Starter's validation and
+# ONNX smoke-test baseline. Ultralytics 8.4 also supports the YOLO26 family.
 numpy>=1.23,<2.0.0
-ultralytics==8.3.40
+ultralytics==8.4.115
 # Ultralytics segment val imports pycocotools.mask when save_json=True.
 # Keep the lower bound aligned with the pinned Ultralytics extra metadata.
 pycocotools>=2.0.7

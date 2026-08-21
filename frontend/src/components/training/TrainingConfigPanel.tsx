@@ -121,7 +121,7 @@ export function TrainingConfigPanel({
               </div>
               <div>
                 <small>权重</small>
-                <strong>{modelChoices[0]?.value ?? "yolo11n.pt"}</strong>
+                <strong>{form.model || "yolo11n.pt"}</strong>
               </div>
               <div>
                 <small>预设</small>

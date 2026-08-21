@@ -72,7 +72,7 @@ npm --prefix frontend install
 
 打开 <http://127.0.0.1:5173>；API 地址为 <http://127.0.0.1:8000>。也可以执行 `./run-all.sh`（或 `sh run-all.sh`）同时启动两个服务，并以 `Ctrl+C` 一并停止。
 
-> 首次以 `yolo11n.pt`、`yolo11n-seg.pt` 等命名权重训练时，Ultralytics 可能下载对应权重。请在确认适用许可后使用，且不要提交权重、数据集或产物。
+> 训练页基础权重支持 YOLOv8、YOLO11 和 YOLO26 系列，并按任务匹配后缀。首次使用命名权重时，Ultralytics 可能下载对应文件。请在确认适用许可后使用，且不要提交权重、数据集或产物。
 
 ## 首次使用流程
 
@@ -138,8 +138,8 @@ yolo <detect|segment|obb|classify> val ... plots=True save_json=True exist_ok=Tr
 ```
 
 - detect 与 OBB 保存 box 指标；segment 同时解析 box 和 mask 两组 precision、recall、mAP50、mAP50-95；classify 保存 top-1、top-5。
-- 产物通过受管 artifact API 提供，不允许请求评估目录外文件。通用任务使用 `PR_curve.png`；Ultralytics 8.3.40 的 segment 使用 `BoxPR_curve.png` 与 `MaskPR_curve.png`，页面会分别展示。
-- `predictions.json` 按 Ultralytics 8.3.40 的真实格式分析：detect 使用左上角 `xywh`，segment 使用 pycocotools RLE mask，OBB 使用 `rbox` / `poly`。
+- 产物通过受管 artifact API 提供，不允许请求评估目录外文件。通用任务使用 `PR_curve.png`；Ultralytics 8.4.115 的 segment 使用 `BoxPR_curve.png` 与 `MaskPR_curve.png`，页面会分别展示。
+- `predictions.json` 按 Ultralytics 8.4.115 的真实格式分析：detect 使用左上角 `xywh`，segment 使用 pycocotools RLE mask，OBB 使用 `rbox` / `poly`。
 - 错误样本包括 missed detection、false positive 和 low confidence；分析器使用已导出的同一 split 标签，最多持久化 200 条。classify 当前只展示原生指标，不生成目标级错误样本。
 - 服务重启时，运行中的任务会标记失败并保留错误信息；尚未开始的任务会重新提交本地 runner。
 
@@ -147,7 +147,7 @@ yolo <detect|segment|obb|classify> val ... plots=True save_json=True exist_ok=Tr
 
 ## 上游对齐与独立运行
 
-Community v2 的固定对齐基线是 YoloWebAgent commit `701f6e5a63b73f39e35f48fb6de7d2414401875a`。评估 runner、artifact manager、错误样本分析和详情面板沿用上游模块边界，并只裁剪到 detect、segment、OBB、classify；Ultralytics 8.3.40 文件名与 JSON 适配是该上游合约的兼容扩展。
+Community v2 的固定对齐基线是 YoloWebAgent commit `701f6e5a63b73f39e35f48fb6de7d2414401875a`。评估 runner、artifact manager、错误样本分析和详情面板沿用上游模块边界，并只裁剪到 detect、segment、OBB、classify；Ultralytics 8.4.115 文件名与 JSON 适配是该上游合约的兼容扩展。
 
 Starter 运行时不会 import、读取或依赖 YoloWebAgent/Enterprise 仓库，也不包含其 Auth、RBAC、License、Agent、Workflow、Evaluation 自动化回调、Deployment 或 pose 模块。
 
@@ -174,9 +174,9 @@ npm --prefix frontend run build
 PYTHONPATH=backend .venv/bin/python scripts/run_cpu_smoke.py
 ```
 
-标准测试会直接调用 Ultralytics 8.3.40 的 detect、segment、OBB validator 生成真实 JSON 合约，再交给错误样本分析器验证。CPU 冒烟会实际运行四任务的一轮微型训练，复用上游原生参数执行 segment `val(save_json=True, plots=True)`，并校验 box/mask 八项指标、pycocotools RLE、混淆矩阵、预测 JSON 和 detect ONNX 导出。整个冒烟使用临时目录且不保留模型或数据集；首次运行可能需要等待 Matplotlib 字体缓存和 ONNX 导出。
+标准测试会直接调用 Ultralytics 8.4.115 的 detect、segment、OBB validator 生成真实 JSON 合约，再交给错误样本分析器验证。CPU 冒烟会实际运行四任务的一轮微型训练，复用上游原生参数执行 segment `val(save_json=True, plots=True)`，并校验 box/mask 八项指标、pycocotools RLE、混淆矩阵、预测 JSON 和 detect ONNX 导出。整个冒烟使用临时目录且不保留模型或数据集；首次运行可能需要等待 Matplotlib 字体缓存和 ONNX 导出。
 
-极小的离线随机模型不保证产生有效 TP，因此 CPU 冒烟不强制要求 PR 曲线存在；`BoxPR_curve.png` / `MaskPR_curve.png` 的 Ultralytics 8.3.40 命名契约由聚焦测试覆盖。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [CHANGELOG.md](CHANGELOG.md)。
+极小的离线随机模型不保证产生有效 TP，因此 CPU 冒烟不强制要求 PR 曲线存在；`BoxPR_curve.png` / `MaskPR_curve.png` 的 Ultralytics 8.4.115 命名契约由聚焦测试覆盖。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 参与贡献
 

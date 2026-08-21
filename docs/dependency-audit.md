@@ -1,28 +1,28 @@
-# 依赖审计
+# Dependency audit
 
-本报告根据仓库 `.venv` 的软件包元数据和 `frontend/package-lock.json` 生成。
-许可证元数据仅用于清单盘点，不构成法律判断；每个 `UNKNOWN` 条目都必须在发布前人工复核。
+Generated from the repository `.venv` package metadata and `frontend/package-lock.json`.
+License metadata is an inventory aid, not a legal determination; every `UNKNOWN` entry requires manual review before release.
 
-## Python 发行包
+## Python distributions
 
-软件包数量：**68**。
+Package count: **72**.
 
-许可证元数据汇总：
-- `BSD (declared text)`: 4
+License metadata summary:
+- `BSD (declared text)`: 5
 - `MIT`: 2
 - `MPL-2.0 AND MIT`: 1
 - `OSI Approved :: Apache Software License`: 4
 - `OSI Approved :: Apache Software License; OSI Approved :: MIT License`: 1
-- `OSI Approved :: BSD License`: 14
+- `OSI Approved :: BSD License`: 15
 - `OSI Approved :: BSD License; OSI Approved :: Apache Software License`: 1
 - `OSI Approved :: CMU License (MIT-CMU)`: 1
 - `OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)`: 2
-- `OSI Approved :: MIT License`: 16
+- `OSI Approved :: MIT License`: 18
 - `OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)`: 1
 - `OSI Approved :: Python Software Foundation License`: 1
 - `UNKNOWN`: 20
 
-| 软件包 | 版本 | 许可证元数据 |
+| Package | Version | License metadata |
 |---|---|---|
 | `alembic` | `1.14.0` | OSI Approved :: MIT License |
 | `annotated-types` | `0.8.0` | OSI Approved :: MIT License |
@@ -52,6 +52,7 @@
 | `mpmath` | `1.3.0` | OSI Approved :: BSD License |
 | `networkx` | `3.6.1` | UNKNOWN |
 | `numpy` | `1.26.4` | OSI Approved :: BSD License |
+| `nvidia-ml-py` | `13.610.43` | OSI Approved :: BSD License |
 | `onnx` | `1.22.0` | UNKNOWN |
 | `onnx-ir` | `0.2.1` | UNKNOWN |
 | `onnxruntime` | `1.27.0` | OSI Approved :: MIT License |
@@ -62,9 +63,12 @@
 | `pillow` | `11.0.0` | OSI Approved :: CMU License (MIT-CMU) |
 | `pip` | `26.1` | UNKNOWN |
 | `pluggy` | `1.6.0` | OSI Approved :: MIT License |
+| `polars` | `1.43.2` | OSI Approved :: MIT License |
+| `polars-runtime-32` | `1.43.2` | OSI Approved :: MIT License |
 | `protobuf` | `7.35.1` | BSD (declared text) |
 | `psutil` | `7.2.2` | BSD (declared text) |
 | `py-cpuinfo` | `9.0.0` | OSI Approved :: MIT License |
+| `pycocotools` | `2.0.11` | BSD (declared text) |
 | `pydantic` | `2.10.3` | OSI Approved :: MIT License |
 | `pydantic_core` | `2.27.1` | OSI Approved :: MIT License |
 | `pyparsing` | `3.3.2` | UNKNOWN |
@@ -85,7 +89,7 @@
 | `torchvision` | `0.28.0` | BSD (declared text) |
 | `tqdm` | `4.70.0` | MPL-2.0 AND MIT |
 | `typing_extensions` | `4.16.0` | UNKNOWN |
-| `ultralytics` | `8.3.40` | OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+) |
+| `ultralytics` | `8.4.115` | OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+) |
 | `ultralytics-thop` | `2.1.6` | OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+) |
 | `urllib3` | `2.7.0` | UNKNOWN |
 | `uvicorn` | `0.32.1` | OSI Approved :: BSD License |
@@ -93,11 +97,11 @@
 | `watchfiles` | `1.2.0` | OSI Approved :: MIT License |
 | `websockets` | `17.0.1` | UNKNOWN |
 
-## npm 软件包
+## npm packages
 
-软件包数量：**264**。
+Package count: **264**.
 
-许可证元数据汇总：
+License metadata summary:
 - `Apache-2.0`: 4
 - `BSD-2-Clause`: 2
 - `BSD-3-Clause`: 2
@@ -106,7 +110,7 @@
 - `MIT`: 246
 - `MIT-0`: 1
 
-| 软件包 | 版本 | 许可证元数据 |
+| Package | Version | License metadata |
 |---|---|---|
 | `@asamuzakjp/css-color` | `3.2.0` | MIT |
 | `@asamuzakjp/css-color/node_modules/lru-cache` | `10.4.3` | ISC |
