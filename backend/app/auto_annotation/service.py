@@ -42,9 +42,13 @@ class AutoAnnotationService:
             raise NotFoundError("model_file_missing", "The managed model file is missing.")
         if model.task_type != dataset.task_type:
             raise ValidationError("auto_annotation_task_mismatch", "The model task type must match the dataset task type.")
-        images = list(session.scalars(select(ImageItem).where(ImageItem.dataset_id == dataset_id).order_by(ImageItem.created_at, ImageItem.id)))
+        image_query = select(ImageItem).where(ImageItem.dataset_id == dataset_id)
+        if payload.skip_annotated_images:
+            image_query = image_query.where(~ImageItem.annotations.any())
+        images = list(session.scalars(image_query.order_by(ImageItem.created_at, ImageItem.id)))
         if not images:
-            raise ValidationError("auto_annotation_dataset_empty", "The dataset has no images to annotate.")
+            message = "The dataset has no unannotated images. Disable skip_annotated_images to process existing annotations." if payload.skip_annotated_images else "The dataset has no images to annotate."
+            raise ValidationError("auto_annotation_dataset_empty", message)
         target_classes = list(session.scalars(select(ClassLabel).where(ClassLabel.dataset_id == dataset_id).order_by(ClassLabel.class_index)))
         if not target_classes:
             raise ValidationError("auto_annotation_classes_missing", "Add at least one dataset class before running auto annotation.")
@@ -63,6 +67,7 @@ class AutoAnnotationService:
             task_type=dataset.task_type,
             status="pending",
             clean_old_annotations=payload.clean_old_annotations,
+            skip_annotated_images=payload.skip_annotated_images,
             confidence=payload.confidence,
             iou=payload.iou,
             class_mapping=mapping,
@@ -144,9 +149,11 @@ def save_auto_annotations(
     task: AutoAnnotationTask,
     image: ImageItem,
     detections: list[Detection],
-) -> tuple[int, int]:
+) -> tuple[int, int, bool]:
     """Persist model output as editable auto annotations, preserving human labels by default."""
 
+    if task.skip_annotated_images and session.scalar(select(Annotation.id).where(Annotation.image_id == image.id).limit(1)) is not None:
+        return 0, 0, True
     if task.clean_old_annotations:
         session.execute(delete(Annotation).where(Annotation.image_id == image.id))
     else:
@@ -170,7 +177,7 @@ def save_auto_annotations(
     annotation_count = session.scalar(select(func.count()).select_from(Annotation).where(Annotation.image_id == image.id)) or 0
     image.status = "annotated" if annotation_count else "unannotated"
     session.commit()
-    return len(created), skipped
+    return len(created), skipped, False
 
 
 def _annotation_from_detection(

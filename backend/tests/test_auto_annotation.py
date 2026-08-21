@@ -6,7 +6,7 @@ import time
 from PIL import Image
 import pytest
 
-from app.core.models import AutoAnnotationTask, ModelVersion
+from app.core.models import Annotation, AutoAnnotationTask, ModelVersion
 from app.models.result_parser import Detection
 
 
@@ -123,6 +123,40 @@ def test_model_with_active_auto_annotation_task_cannot_be_deleted(client):
     response = client.delete(f"/api/models/{model_id}")
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "model_in_use"
+
+
+def test_auto_annotation_skips_images_that_already_have_annotations(client, monkeypatch):
+    dataset = client.post("/api/datasets", json={"name": "skip-existing", "task_type": "detect"}).json()
+    dataset_id = dataset["id"]
+    class_id = client.post(f"/api/datasets/{dataset_id}/classes", json={"name": "cat"}).json()["id"]
+    image_data = io.BytesIO()
+    Image.new("RGB", (100, 80), "#4477aa").save(image_data, format="PNG")
+    first = client.post(f"/api/datasets/{dataset_id}/images/upload", files={"files": ("existing.png", image_data.getvalue(), "image/png")}).json()["items"][0]
+    second = client.post(f"/api/datasets/{dataset_id}/images/upload", files={"files": ("new.png", image_data.getvalue(), "image/png")}).json()["items"][0]
+    model_id = "model_skip_existing"
+    model_path = client.app.state.storage.model_version_dir(model_id) / "best.pt"
+    model_path.write_bytes(b"fake-managed-model")
+    with client.app.state.database.session_factory() as session:
+        session.add(Annotation(id="ann_existing", image_id=first["id"], dataset_id=dataset_id, class_id=class_id, type="bbox", x=10, y=12, width=30, height=25, source="manual"))
+        session.add(ModelVersion(id=model_id, name="skip-model", version="v1", dataset_id=dataset_id, source="training_task", artifact_type="best", format="pt", task_type="detect", engine_type="ultralytics", model_path=str(model_path), status="active", metrics_json={}, notes=""))
+        session.commit()
+    calls: list[str] = []
+
+    def infer(**kwargs):
+        calls.append(kwargs["image_path"].name)
+        return [Detection(class_index=0, confidence=0.9, x=10, y=12, width=30, height=25)]
+
+    monkeypatch.setattr("app.auto_annotation.runner.run_managed_inference", infer)
+    created = client.post(f"/api/datasets/{dataset_id}/auto-annotation", json={"model_id": model_id})
+    assert created.status_code == 202, created.text
+    task = _wait_for_terminal_task(client, created.json()["id"])
+    assert task["status"] == "completed", task
+    assert task["total_images"] == 1
+    assert len(calls) == 1
+    existing_annotations = client.get(f"/api/datasets/{dataset_id}/images/{first['id']}/annotations").json()
+    new_annotations = client.get(f"/api/datasets/{dataset_id}/images/{second['id']}/annotations").json()
+    assert [item["source"] for item in existing_annotations] == ["manual"]
+    assert [item["source"] for item in new_annotations] == ["auto"]
 
 
 @pytest.mark.parametrize(

@@ -267,6 +267,7 @@ export interface AutoAnnotationTask {
   task_type: TaskType;
   status: AutoAnnotationStatus;
   clean_old_annotations: boolean;
+  skip_annotated_images: boolean;
   confidence: number;
   iou: number;
   class_mapping: Record<string, string>;

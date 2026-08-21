@@ -252,6 +252,7 @@ class AutoAnnotationTask(Base, TimestampMixin):
     task_type: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True, nullable=False)
     clean_old_annotations: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    skip_annotated_images: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=0.25, nullable=False)
     iou: Mapped[float] = mapped_column(Float, default=0.45, nullable=False)
     class_mapping: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)

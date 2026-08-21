@@ -13,6 +13,7 @@ class AutoAnnotationCreateRequest(BaseModel):
     confidence: float = Field(default=0.25, ge=0, le=1)
     iou: float = Field(default=0.45, ge=0, le=1)
     clean_old_annotations: bool = False
+    skip_annotated_images: bool = True
     class_mapping: dict[str, str] = Field(default_factory=dict, max_length=100)
 
 
@@ -25,6 +26,7 @@ class AutoAnnotationTaskResponse(BaseModel):
     task_type: TaskType
     status: Literal["pending", "running", "completed", "failed", "stopped"]
     clean_old_annotations: bool
+    skip_annotated_images: bool
     confidence: float
     iou: float
     class_mapping: dict[str, str]

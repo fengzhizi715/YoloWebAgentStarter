@@ -10,6 +10,7 @@ export function AutoAnnotationModal({ dataset, onClose, onChanged }: { dataset: 
   const [confidence, setConfidence] = useState(0.25);
   const [iou, setIou] = useState(0.45);
   const [cleanOld, setCleanOld] = useState(false);
+  const [skipAnnotated, setSkipAnnotated] = useState(true);
   const [confirmCleanOld, setConfirmCleanOld] = useState(false);
   const [targetClasses, setTargetClasses] = useState<ClassLabel[]>([]);
   const [sourceClasses, setSourceClasses] = useState<ClassLabel[]>([]);
@@ -88,7 +89,7 @@ export function AutoAnnotationModal({ dataset, onClose, onChanged }: { dataset: 
     setError("");
     try {
       const mapping = Object.fromEntries(Object.entries(classMapping).filter(([, targetId]) => Boolean(targetId)));
-      const created = await api.createAutoAnnotation(dataset.id, { model_id: modelId, confidence, iou, clean_old_annotations: cleanOld, class_mapping: mapping });
+      const created = await api.createAutoAnnotation(dataset.id, { model_id: modelId, confidence, iou, clean_old_annotations: cleanOld, skip_annotated_images: skipAnnotated, class_mapping: mapping });
       setTask(created);
       setLog(undefined);
     } catch (reason) {
@@ -113,7 +114,8 @@ export function AutoAnnotationModal({ dataset, onClose, onChanged }: { dataset: 
           {selectedModel && <p className="hint auto-annotation-model-hint">任务类型：{selectedModel.task_type} · 仅使用本地受管 PT 模型。同名类别会自动映射，其余类别需明确选择目标类别或忽略。</p>}
           <section className="auto-annotation-mapping"><div><strong>类别映射</strong><small>未映射的模型类别会跳过，绝不会按类别索引猜测。</small></div>{classesLoading ? <p className="hint">正在读取模型类别…</p> : sourceClasses.map((source) => <label key={source.id}><span>{source.class_index}: {source.name}</span><select value={classMapping[String(source.class_index)] ?? ""} onChange={(event) => setClassMapping((current) => ({ ...current, [String(source.class_index)]: event.target.value }))}><option value="">忽略此类别</option>{targetClasses.map((target) => <option key={target.id} value={target.id}>{target.class_index}: {target.name}</option>)}</select></label>)}</section>
           <div className="auto-annotation-controls"><label>置信度 <strong>{confidence.toFixed(2)}</strong><input type="range" min="0.01" max="0.99" step="0.01" value={confidence} onChange={(event) => setConfidence(Number(event.target.value))} /></label><label>IoU <strong>{iou.toFixed(2)}</strong><input type="range" min="0" max="0.99" step="0.01" value={iou} onChange={(event) => setIou(Number(event.target.value))} /></label></div>
-          <label className="auto-annotation-checkbox"><input type="checkbox" checked={cleanOld} onChange={(event) => { setCleanOld(event.target.checked); setConfirmCleanOld(false); }} /><span><strong>清理旧标注</strong><small>关闭时保留人工/导入标注，只替换上一次自动标注结果。</small></span></label>
+          <label className="auto-annotation-checkbox"><input type="checkbox" checked={skipAnnotated} onChange={(event) => setSkipAnnotated(event.target.checked)} /><span><strong>跳过已有标注的图片（推荐）</strong><small>默认只处理没有任何人工、导入或自动标注的图片，避免重复标注。</small></span></label>
+          <label className="auto-annotation-checkbox"><input type="checkbox" checked={cleanOld} onChange={(event) => { setCleanOld(event.target.checked); setSkipAnnotated(!event.target.checked); setConfirmCleanOld(false); }} /><span><strong>清理旧标注</strong><small>开启后会处理已有标注图片，并在写入前删除其全部标注。</small></span></label>
           {cleanOld && <label className="auto-annotation-checkbox danger"><input type="checkbox" checked={confirmCleanOld} onChange={(event) => setConfirmCleanOld(event.target.checked)} /><span><strong>我理解这会删除每张图片现有的全部标注</strong><small>包括人工、导入和先前自动生成的标注，且无法撤销。</small></span></label>}
         </> : <p className="auto-annotation-empty">当前没有匹配的受管 PT 模型。请先完成一次本地训练并登记模型。</p>}
         {error && <div className="validation invalid"><span>{error}</span></div>}

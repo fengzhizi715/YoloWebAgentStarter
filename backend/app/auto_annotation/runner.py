@@ -56,11 +56,14 @@ class AutoAnnotationRunner:
                             image = session.get(ImageItem, image_id)
                             if task is None or image is None:
                                 raise RuntimeError("Auto-annotation task or image was removed while running.")
-                            created, skipped = save_auto_annotations(session, task, image, detections)
+                            created, skipped, image_skipped = save_auto_annotations(session, task, image, detections)
                             task.processed_images = index
                             task.created_annotations += created
+                            task.skipped_images += int(image_skipped)
                             task.progress_percent = round(index / max(task.total_images, 1) * 100, 2)
                             session.commit()
+                        if image_skipped:
+                            log_store.append(f"{image_id}: skipped because the image was annotated after the task was queued.")
                         if skipped:
                             log_store.append(f"{image_id}: created {created}, skipped {skipped} unmapped or invalid detections.")
                     except Exception as exc:
@@ -89,7 +92,10 @@ class AutoAnnotationRunner:
                 task.error_message = "The selected model was removed before the task started."
                 session.commit()
                 return None
-            image_ids = list(session.scalars(select(ImageItem.id).where(ImageItem.dataset_id == task.dataset_id).order_by(ImageItem.created_at, ImageItem.id)))
+            image_query = select(ImageItem.id).where(ImageItem.dataset_id == task.dataset_id)
+            if task.skip_annotated_images:
+                image_query = image_query.where(~ImageItem.annotations.any())
+            image_ids = list(session.scalars(image_query.order_by(ImageItem.created_at, ImageItem.id)))
             source_classes = list(session.scalars(select(ClassLabel).where(ClassLabel.dataset_id == model.dataset_id).order_by(ClassLabel.class_index))) if model.dataset_id else []
             task.status = "running"
             task.started_at = utc_now()

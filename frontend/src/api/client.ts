@@ -146,7 +146,7 @@ export const api = {
   deleteModel: (modelId: string) => request<void>(`/api/models/${modelId}`, { method: "DELETE" }),
   exportModelOnnx: (modelId: string) => request<ModelVersion>(`/api/models/${modelId}/export-onnx`, { method: "POST" }),
   testModel: async (modelId: string, file: File, confidence: number, iou: number) => { const form = new FormData(); form.append("file", file); return request<InferenceResult>(`/api/models/${modelId}/test?confidence=${confidence}&iou=${iou}`, { method: "POST", body: form }); },
-  createAutoAnnotation: (datasetId: string, payload: { model_id: string; confidence: number; iou: number; clean_old_annotations: boolean; class_mapping?: Record<string, string> }) => request<AutoAnnotationTask>(`/api/datasets/${datasetId}/auto-annotation`, json(payload)),
+  createAutoAnnotation: (datasetId: string, payload: { model_id: string; confidence: number; iou: number; clean_old_annotations: boolean; skip_annotated_images: boolean; class_mapping?: Record<string, string> }) => request<AutoAnnotationTask>(`/api/datasets/${datasetId}/auto-annotation`, json(payload)),
   listAutoAnnotations: (datasetId: string) => request<AutoAnnotationTask[]>(`/api/datasets/${datasetId}/auto-annotation`),
   getAutoAnnotation: (taskId: string) => request<AutoAnnotationTask>(`/api/auto-annotation/${taskId}`),
   stopAutoAnnotation: (taskId: string) => request<AutoAnnotationTask>(`/api/auto-annotation/${taskId}/stop`, { method: "POST" }),
