@@ -1,6 +1,6 @@
 # YoloWebAgentStarter
 
-面向本地单用户的 YOLO 数据集工作台：完成图片/视频帧导入、人工标注、数据校验、YOLO/COCO 交换、本地训练、原生 YOLO 评估和受管模型产物的一条轻量闭环。
+YoloWebAgent的社区版，面向本地单用户的 YOLO 数据集工作台：完成图片/视频帧导入、人工标注、数据校验、YOLO/COCO 交换、本地训练、原生 YOLO 评估和受管模型产物的一条轻量闭环。
 
 ```text
 图片 → 数据集 → 标注 → 校验 → YOLO 导入 / 导出 → 本地训练 → 受管 PT → split 评估 / FP32 ONNX
@@ -186,12 +186,3 @@ PYTHONPATH=backend .venv/bin/python scripts/run_cpu_smoke.py
 4. 保留并更新来源记录；不得引入上游/Enterprise 的运行时依赖。
 
 完整规范见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-## 许可证、来源与第三方组件
-
-仓库包含 MIT `LICENSE`，但其并不单独授予固定 YoloWebAgent 快照派生部分的再许可权；在上游授权门槛通过前，本项目不具备可公开发布条件。不要因为仓库中存在 MIT 文件而推断整个代码库已获授权。
-
-- [逐模块迁移审计](migration_matrix.md)
-- [第三方依赖与模型权重说明](THIRD_PARTY_NOTICES.md)
-
-Ultralytics 和任何 SAM/YOLO 权重均遵循各自的许可证与分发条款；发布者必须针对实际发布方式单独复核。
