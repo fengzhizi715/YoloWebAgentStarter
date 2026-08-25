@@ -14,11 +14,14 @@ interface Props {
 
 export function TrainingTaskDetailCard({ task, summary, logs, busy, onClose, onStop, onResume }: Props) {
   const history = summary?.metrics.history ?? [];
-  const path = history.map((point, index) => {
-    const x = index * (100 / Math.max(history.length - 1, 1));
-    const y = 72 - (point.map50 ?? 0) * 64;
-    return `${index ? "L" : "M"}${x} ${y}`;
-  }).join(" ");
+  const lossSeries = [
+    { key: "train_loss", label: "Loss", color: "#3157d5" },
+    { key: "train_box_loss", label: "Box", color: "#3157d5" },
+    { key: "train_cls_loss", label: "Cls", color: "#ef8d3c" },
+    { key: "train_dfl_loss", label: "DFL", color: "#2a9d8f" },
+    { key: "train_seg_loss", label: "Seg", color: "#9b5de5" },
+  ].filter((series) => history.some((point) => typeof point[series.key] === "number"));
+  const mapSeries = [{ key: "map50", label: "mAP50", color: "#3157d5" }];
   const value = (key: string) => {
     const fromSummary = metricNumber(summary?.metrics[key]);
     if (fromSummary !== undefined) return fromSummary.toFixed(3);
@@ -28,6 +31,8 @@ export function TrainingTaskDetailCard({ task, summary, logs, busy, onClose, onS
 
   const canStop = task.status === "running" || task.status === "pending";
   const canResume = !canStop && !!task.last_model_path;
+  const currentLoss = metricNumber(summary?.metrics.loss) ?? metricNumber(task.metrics_json.loss);
+  const timing = summary?.timing ?? {};
 
   return (
     <section className="training-ws-card training-detail-inline" id="training-task-detail">
@@ -69,17 +74,18 @@ export function TrainingTaskDetailCard({ task, summary, logs, busy, onClose, onS
           <Metric label="Precision" value={value("precision")} />
           <Metric label="Recall" value={value("recall")} />
         </div>
-        {history.length > 1 && (
-          <div className="metric-chart">
-            <div>
-              <strong>mAP50 趋势</strong>
-              <small>{history.length} 个训练轮次</small>
-            </div>
-            <svg viewBox="0 0 100 80" preserveAspectRatio="none">
-              <path d="M0 72H100" stroke="#dbe4ef" />
-              <path d={path} fill="none" stroke="#3157d5" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-            </svg>
-          </div>
+        <div className="training-timing-grid">
+          <Metric label="当前 Loss" value={formatNumber(currentLoss)} />
+          <Metric label="批次耗时" value={formatSeconds(timing.batch_time_seconds)} />
+          <Metric label="最近 Epoch" value={formatSeconds(timing.epoch_time_seconds)} />
+          <Metric label="已耗时" value={formatSeconds(timing.elapsed_seconds)} />
+          <Metric label="吞吐" value={timing.speed_it_per_sec ? `${timing.speed_it_per_sec.toFixed(2)} it/s` : "—"} />
+        </div>
+        {history.length > 1 && lossSeries.length > 0 && (
+          <TrainingMetricChart title="Loss 曲线" count={history.length} history={history} series={lossSeries} />
+        )}
+        {history.length > 1 && history.some((point) => typeof point.map50 === "number") && (
+          <TrainingMetricChart title="mAP50 趋势" count={history.length} history={history} series={mapSeries} max={1} />
         )}
         {summary?.risks.length ? <p className="hint">风险提示：{summary.risks.join("、")}</p> : null}
       </div>
@@ -106,4 +112,68 @@ export function TrainingTaskDetailCard({ task, summary, logs, busy, onClose, onS
 
 function Metric({ label, value }: { label: string; value: string }) {
   return <span><small>{label}</small><strong>{value}</strong></span>;
+}
+
+function TrainingMetricChart({
+  title,
+  count,
+  history,
+  series,
+  max: fixedMax,
+}: {
+  title: string;
+  count: number;
+  history: Array<Record<string, number>>;
+  series: Array<{ key: string; label: string; color: string }>;
+  max?: number;
+}) {
+  const values = series.flatMap((item) => history.map((point) => point[item.key]).filter((value) => typeof value === "number"));
+  const min = 0;
+  const max = fixedMax ?? Math.max(...values, 1);
+  return (
+    <div className="metric-chart training-metric-chart">
+      <div className="training-metric-chart-meta">
+        <strong>{title}</strong>
+        <small>{count} 个训练轮次</small>
+        <div className="training-chart-legend">
+          {series.map((item) => <span key={item.key}><i style={{ background: item.color }} />{item.label}</span>)}
+        </div>
+      </div>
+      <svg viewBox="0 0 100 80" preserveAspectRatio="none" role="img" aria-label={title}>
+        <path d="M0 72H100" stroke="#dbe4ef" />
+        {series.map((item) => (
+          <path
+            key={item.key}
+            d={chartPath(history, item.key, min, max)}
+            fill="none"
+            stroke={item.color}
+            strokeWidth="2"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function chartPath(history: Array<Record<string, number>>, key: string, min: number, max: number): string {
+  const span = Math.max(max - min, 0.00001);
+  return history.map((point, index) => {
+    const value = point[key];
+    if (typeof value !== "number") return "";
+    const x = index * (100 / Math.max(history.length - 1, 1));
+    const y = 72 - ((value - min) / span) * 64;
+    return `${index ? "L" : "M"}${x} ${Math.min(72, Math.max(8, y))}`;
+  }).filter(Boolean).join(" ");
+}
+
+function formatNumber(value: number | undefined): string {
+  return value === undefined ? "—" : value.toFixed(3);
+}
+
+function formatSeconds(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return "—";
+  if (value < 1) return `${Math.round(value * 1000)}ms`;
+  if (value < 60) return `${value.toFixed(1)}s`;
+  return `${Math.floor(value / 60)}m ${Math.round(value % 60)}s`;
 }

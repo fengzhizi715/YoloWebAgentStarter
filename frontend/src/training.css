@@ -1923,6 +1923,81 @@
   margin: 0;
 }
 
+.training-timing-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.training-timing-grid .metric-strip,
+.training-timing-grid > span {
+  min-width: 0;
+}
+
+.training-timing-grid > span {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e1e6ef;
+  border-radius: 8px;
+  background: #fbfcff;
+}
+
+.training-timing-grid small {
+  color: #8792a6;
+  font-size: 10px;
+}
+
+.training-timing-grid strong {
+  color: #2d3a52;
+  font-size: 16px;
+}
+
+.training-metric-chart {
+  grid-template-columns: 155px 1fr;
+}
+
+.training-metric-chart-meta {
+  min-width: 0;
+}
+
+.training-metric-chart-meta small {
+  display: block;
+  margin-top: 4px;
+  color: #8994a8;
+  font-size: 10px;
+}
+
+.training-chart-legend {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  color: #66748a;
+  font-size: 10px;
+}
+
+.training-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.training-chart-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+@media (max-width: 760px) {
+  .training-timing-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .training-metric-chart {
+    grid-template-columns: 1fr;
+  }
+}
+
 .training-detail-log {
   margin-top: 14px;
 }

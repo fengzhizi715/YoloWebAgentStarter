@@ -83,6 +83,29 @@ printf 'fake last' > "$project/$name/weights/last.pt"
     path.chmod(0o755)
 
 
+def detailed_live_metrics_yolo(path: Path) -> None:
+    path.write_text(
+        """#!/bin/sh
+project=""
+name="run"
+for arg in "$@"; do
+  case "$arg" in
+    project=*) project="${arg#project=}" ;;
+    name=*) name="${arg#name=}" ;;
+  esac
+done
+mkdir -p "$project/$name/weights"
+printf 'epoch,time,train/box_loss,train/cls_loss,train/dfl_loss,metrics/mAP50(B)\\n1,2.5,1.2,0.3,0.1,0.42\\n' > "$project/$name/results.csv"
+printf '1/3 1.2G 1.2 0.3 0.1 2.5it/s\\n'
+sleep 1
+printf 'fake best' > "$project/$name/weights/best.pt"
+printf 'fake last' > "$project/$name/weights/last.pt"
+""",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
 def prepared_dataset(client, task_type: str = "detect") -> tuple[str, str]:
     dataset = client.post("/api/datasets", json={"name": f"train-{task_type}", "task_type": task_type}).json()
     dataset_id = dataset["id"]
@@ -169,6 +192,35 @@ def test_running_task_refreshes_live_metrics_and_history(client, tmp_path, monke
     summary = client.get(f"/api/training/tasks/{task_id}/summary").json()
     assert summary["metrics"]["map50"] == 0.42
     assert summary["metrics"]["history"] == [{"epoch": 0.0, "precision": 0.6, "recall": 0.3, "map50": 0.42, "map50_95": 0.21}]
+    assert wait_for_terminal(client, task_id)["status"] == "completed"
+
+
+def test_running_task_exposes_upstream_loss_and_batch_timing(client, tmp_path, monkeypatch):
+    executable = tmp_path / "detailed-live-metrics-yolo"
+    detailed_live_metrics_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+    dataset_id, _ = prepared_dataset(client)
+
+    response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "name": "detailed-live", "model": "yolo11n.pt", "epochs": 3, "batch_size": 1},
+    )
+    assert response.status_code == 201, response.text
+    task_id = response.json()["id"]
+    for _ in range(30):
+        task = client.get(f"/api/training/tasks/{task_id}").json()
+        if task["status"] == "running" and task["metrics_json"].get("train_box_loss") == 1.2:
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("live loss telemetry was not refreshed")
+
+    assert task["metrics_json"]["loss"] == 1.6
+    assert task["metrics_json"]["batch_time_seconds"] == 0.4
+    summary = client.get(f"/api/training/tasks/{task_id}/summary").json()
+    assert summary["timing"]["batch_time_seconds"] == 0.4
+    assert summary["metrics"]["history"][0]["train_box_loss"] == 1.2
+    assert summary["metrics"]["history"][0]["loss"] == 1.6
     assert wait_for_terminal(client, task_id)["status"] == "completed"
 
 

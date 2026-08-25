@@ -256,14 +256,25 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onOpenModels 
     ? liveMetricsFromTask(
       activeTask,
       parsedLive,
-      summary?.task_id === activeTask.id ? (typeof summary.metrics.map50 === "number" ? summary.metrics.map50 : undefined) : undefined,
+      summary?.task_id === activeTask.id ? summary.metrics : undefined,
     )
     : undefined;
   const liveEta = (() => {
     if (!activeTask || !activeLive) return "—";
     const remaining = Math.max(activeTask.epochs - activeLive.liveEpoch, 0);
     if (!remaining) return "即将完成";
-    const perEpochSec = 45;
+    const liveSummary = summary?.task_id === activeTask.id ? summary : undefined;
+    const history = liveSummary?.metrics.history ?? [];
+    const measuredEpochSeconds = history
+      .map((point) => point.epoch_time_seconds)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+    const measuredLastEpochSeconds = measuredEpochSeconds.length ? measuredEpochSeconds[measuredEpochSeconds.length - 1] : undefined;
+    const perEpochSec = measuredLastEpochSeconds
+      ?? (typeof liveSummary?.timing?.epoch_time_seconds === "number" ? liveSummary.timing.epoch_time_seconds : undefined)
+      ?? (typeof liveSummary?.metrics.elapsed_seconds === "number" && activeLive.liveEpoch > 0
+        ? liveSummary.metrics.elapsed_seconds / activeLive.liveEpoch
+        : undefined)
+      ?? 45;
     return formatEtaSeconds(remaining * perEpochSec);
   })();
 
@@ -324,6 +335,7 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onOpenModels 
               liveEpoch={activeLive.liveEpoch}
               liveProgressPct={activeLive.liveProgressPct}
               liveLoss={activeLive.liveLoss}
+              liveBatchTimeSeconds={activeLive.liveBatchTimeSeconds}
               liveEta={liveEta}
               liveMap50={activeLive.liveMap50}
               parsedLive={parsedLive}

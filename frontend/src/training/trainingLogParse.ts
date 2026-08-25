@@ -1,10 +1,11 @@
 /** Best-effort parsing of Ultralytics-style training logs for live UI. */
 
-export type EpochLossPoint = { epoch: number; boxLoss: number };
+export type EpochLossPoint = { epoch: number; boxLoss: number; clsLoss?: number; dflLoss?: number };
 
 export type ParsedTrainingLogs = {
   epochRows: EpochLossPoint[];
   speedItPerSec?: string;
+  batchTimeSeconds?: number;
 };
 
 /** Epoch row: leading epoch/TOTAL, GPU mem token, then box / cls / dfl losses. */
@@ -15,19 +16,33 @@ export function parseTrainingLogs(logs: string, configuredEpochs: number): Parse
   const lines = logs.split("\n");
   const epochRows: EpochLossPoint[] = [];
   let speedItPerSec: string | undefined;
+  let batchTimeSeconds: number | undefined;
 
   for (const line of lines) {
     const speedMatch = line.match(/([\d.]+)\s*it\/s/i);
-    if (speedMatch) speedItPerSec = `${speedMatch[1]} it/s`;
+    if (speedMatch) {
+      const speed = Number.parseFloat(speedMatch[1]);
+      if (Number.isFinite(speed) && speed > 0) {
+        speedItPerSec = `${speedMatch[1]} it/s`;
+        batchTimeSeconds = 1 / speed;
+      }
+    }
 
     const m = line.match(EPOCH_TABLE_ROW);
     if (!m) continue;
     const cur = Number.parseInt(m[1], 10);
     const total = Number.parseInt(m[2], 10);
     const boxLoss = Number.parseFloat(m[3]);
+    const clsLoss = Number.parseFloat(m[4]);
+    const dflLoss = Number.parseFloat(m[5]);
     if (!Number.isFinite(cur) || !Number.isFinite(total) || !Number.isFinite(boxLoss)) continue;
     if (configuredEpochs > 0 && total !== configuredEpochs) continue;
-    epochRows.push({ epoch: cur, boxLoss });
+    epochRows.push({
+      epoch: cur,
+      boxLoss,
+      ...(Number.isFinite(clsLoss) ? { clsLoss } : {}),
+      ...(Number.isFinite(dflLoss) ? { dflLoss } : {}),
+    });
   }
 
   const byEpoch = new Map<number, number>();
@@ -38,7 +53,7 @@ export function parseTrainingLogs(logs: string, configuredEpochs: number): Parse
     .sort((a, b) => a[0] - b[0])
     .map(([epoch, boxLoss]) => ({ epoch, boxLoss }));
 
-  return { epochRows: deduped, speedItPerSec };
+  return { epochRows: deduped, speedItPerSec, batchTimeSeconds };
 }
 
 export function formatEtaSeconds(seconds: number): string {

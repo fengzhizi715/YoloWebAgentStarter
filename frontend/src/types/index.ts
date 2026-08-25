@@ -219,6 +219,7 @@ export interface TrainingSummary {
   dataset: Record<string, unknown>;
   progress: { epoch: number; total_epochs: number; percent: number };
   metrics: Record<string, unknown> & { history?: Array<Record<string, number>> };
+  timing: Record<string, number>;
   checkpoints: Record<string, string | null>;
   log_summary: { line_count: number; tail: string[] };
   risks: string[];

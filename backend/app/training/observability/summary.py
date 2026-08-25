@@ -20,6 +20,11 @@ def write_training_summary(task: TrainingTask, dataset: Dataset) -> dict:
         results_path = Path(task.run_dir) / "results.csv"
         metrics.update(parser.parse_results(results_path))
         history = parser.parse_history(results_path)
+    timing = {
+        key: metrics[key]
+        for key in ("elapsed_seconds", "epoch_time_seconds", "batch_time_seconds", "speed_it_per_sec")
+        if isinstance(metrics.get(key), (int, float))
+    }
     risks: list[str] = []
     if task.status != "completed":
         risks.append(f"training_status_{task.status}")
@@ -36,6 +41,7 @@ def write_training_summary(task: TrainingTask, dataset: Dataset) -> dict:
         "dataset": {"id": dataset.id, "name": dataset.name, "task_type": dataset.task_type},
         "progress": {"epoch": task.progress_epoch, "total_epochs": task.progress_total_epochs, "percent": task.progress_percent},
         "metrics": {**metrics, "history": history},
+        "timing": timing,
         "checkpoints": checkpoint_data,
         "log_summary": {"line_count": len(text.splitlines()), "tail": text.splitlines()[-20:]},
         "risks": risks,

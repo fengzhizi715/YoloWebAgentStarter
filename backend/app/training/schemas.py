@@ -109,6 +109,7 @@ class TrainingSummaryResponse(BaseModel):
     log_summary: dict
     risks: list[str]
     next_steps: list[str]
+    timing: dict = Field(default_factory=dict)
 
 
 class TrainingProfileCreate(BaseModel):

@@ -1,4 +1,4 @@
-import type { TrainingTask } from "../../types";
+import type { TrainingSummary, TrainingTask } from "../../types";
 import { formatDateTime, formatShortId, metricNumber, statusLabel } from "../../training/helpers";
 import type { ParsedTrainingLogs } from "../../training/trainingLogParse";
 import { IconCpu, IconList, IconStop } from "./icons";
@@ -10,6 +10,7 @@ interface Props {
   liveLoss: number | undefined;
   liveEta: string;
   liveMap50: number | undefined;
+  liveBatchTimeSeconds: number | undefined;
   parsedLive: ParsedTrainingLogs;
   busy: boolean;
   onStop: () => void;
@@ -23,6 +24,7 @@ export function TrainingActiveRunCard({
   liveLoss,
   liveEta,
   liveMap50,
+  liveBatchTimeSeconds,
   parsedLive,
   busy,
   onStop,
@@ -66,6 +68,7 @@ export function TrainingActiveRunCard({
           <div className="training-ws-control-footer">
             <span>本机 · {task.device}</span>
             <span><IconCpu size={14} /> {parsedLive.speedItPerSec ?? "—"}</span>
+            <span>批次 {formatSeconds(liveBatchTimeSeconds)}</span>
           </div>
 
           <div className="training-ws-control-actions">
@@ -104,11 +107,26 @@ export function TrainingActiveRunCard({
   );
 }
 
-export function liveMetricsFromTask(task: TrainingTask, parsed: ParsedTrainingLogs, summaryMap50?: number) {
+export function liveMetricsFromTask(
+  task: TrainingTask,
+  parsed: ParsedTrainingLogs,
+  summaryMetrics?: TrainingSummary["metrics"],
+) {
   const lastRow = parsed.epochRows.length ? parsed.epochRows[parsed.epochRows.length - 1] : undefined;
   const liveEpoch = task.progress_epoch || lastRow?.epoch || 0;
   const liveProgressPct = task.progress_percent || (task.epochs ? (liveEpoch / task.epochs) * 100 : 0);
-  const liveLoss = lastRow?.boxLoss;
-  const liveMap50 = summaryMap50 ?? metricNumber(task.metrics_json?.map50);
-  return { liveEpoch, liveProgressPct, liveLoss, liveMap50 };
+  const liveLoss = metricNumber(summaryMetrics?.loss)
+    ?? metricNumber(summaryMetrics?.train_box_loss)
+    ?? lastRow?.boxLoss;
+  const liveMap50 = metricNumber(summaryMetrics?.map50) ?? metricNumber(task.metrics_json?.map50);
+  const liveBatchTimeSeconds = metricNumber(summaryMetrics?.batch_time_seconds)
+    ?? metricNumber(task.metrics_json?.batch_time_seconds)
+    ?? parsed.batchTimeSeconds;
+  return { liveEpoch, liveProgressPct, liveLoss, liveMap50, liveBatchTimeSeconds };
+}
+
+function formatSeconds(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return "—";
+  if (value < 1) return `${Math.round(value * 1000)}ms`;
+  return `${value.toFixed(2)}s`;
 }

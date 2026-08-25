@@ -126,11 +126,19 @@ class TrainingRunner:
             task = session.get(TrainingTask, task_id)
             if task is None or task.status != "running":
                 return
-            total = int(progress.get("total_epochs", task.epochs))
-            epoch = min(int(progress.get("epoch", 0)), total)
-            task.progress_total_epochs = max(total, 1)
-            task.progress_epoch = max(epoch, 0)
-            task.progress_percent = round(task.progress_epoch / task.progress_total_epochs * 100, 2)
+            if "epoch" in progress:
+                total = int(progress.get("total_epochs", task.epochs))
+                epoch = min(int(progress.get("epoch", 0)), total)
+                task.progress_total_epochs = max(total, 1)
+                task.progress_epoch = max(epoch, 0)
+                task.progress_percent = round(task.progress_epoch / task.progress_total_epochs * 100, 2)
+            live_metrics = dict(task.metrics_json or {})
+            for key in ("batch_time_seconds", "speed_it_per_sec"):
+                value = progress.get(key)
+                if value is not None:
+                    live_metrics[key] = value
+            if live_metrics != (task.metrics_json or {}):
+                task.metrics_json = live_metrics
             session.commit()
 
     def _finish(self, task_id: str, return_code: int, log_store: TrainingLogStore, process_error: str | None = None) -> None:
@@ -143,7 +151,8 @@ class TrainingRunner:
             task.best_model_path = artifacts["best"]
             task.last_model_path = artifacts["last"]
             if task.run_dir:
-                task.metrics_json = self.metrics_parser.parse_results(Path(task.run_dir) / "results.csv")
+                final_metrics = self.metrics_parser.parse_results(Path(task.run_dir) / "results.csv")
+                task.metrics_json = {**dict(task.metrics_json or {}), **final_metrics}
             task.finished_at = utc_now()
             if stopped:
                 task.status = "stopped"
