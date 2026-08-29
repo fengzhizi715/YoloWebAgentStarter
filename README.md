@@ -1,5 +1,7 @@
 # YoloWebAgentStarter
 
+[English README](README.en.md)
+
 YoloWebAgent的社区版，面向本地单用户的 YOLO 数据集工作台：完成图片/视频帧导入、人工标注、数据校验、YOLO/COCO 交换、本地训练、原生 YOLO 评估和受管模型产物的一条轻量闭环。
 
 ```text
