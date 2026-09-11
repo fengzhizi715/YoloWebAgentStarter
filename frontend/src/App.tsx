@@ -7,12 +7,13 @@ import { TrainingView } from "./pages/TrainingView";
 import { ModelsView } from "./pages/ModelsView";
 import { SettingsView } from "./pages/SettingsView";
 import { LogsView } from "./pages/LogsView";
+import { AgentView } from "./pages/AgentView";
 import { AutoAnnotationModal } from "./components/AutoAnnotationModal";
 import { ImportCenterModal } from "./components/ImportCenterModal";
 import { readLocale, saveLocale, type AppLocale } from "./locale";
 import type { Annotation, BBox, ClassLabel, Dataset, DatasetQualityReport, DuplicateReport, ImageItem, SamCapabilities, SamPrediction, SplitName, TaskType, ValidationReport } from "./types";
 
-type View = "workspace" | "annotation" | "training" | "models" | "settings-sam" | "settings-language" | "logs";
+type View = "workspace" | "annotation" | "training" | "models" | "agent" | "settings-llm" | "settings-sam" | "settings-language" | "logs";
 type CardReportKind = "validation" | "quality" | "duplicates";
 const ANNOTATION_IMAGE_PAGE_SIZE = 20;
 
@@ -31,6 +32,8 @@ export default function App() {
   const [samCapabilities, setSamCapabilities] = useState<SamCapabilities>();
   const [locale, setLocale] = useState<AppLocale>(() => readLocale());
   const [annotationDirty, setAnnotationDirty] = useState(false);
+  const [focusTrainingTaskId, setFocusTrainingTaskId] = useState<string>();
+  const [focusModelId, setFocusModelId] = useState<string>();
   const { requestLeave, dialog: leaveDialog } = useLeaveConfirm(view === "annotation" && annotationDirty);
 
   const refreshDatasets = async () => {
@@ -136,7 +139,12 @@ export default function App() {
   };
 
   const displayedDataset = selected;
-  const activeSection: StarterSection = view === "annotation" ? "workspace" : view === "settings-sam" || view === "settings-language" ? "settings" : view;
+  const activeSection: StarterSection =
+    view === "annotation"
+      ? "workspace"
+      : view === "settings-llm" || view === "settings-sam" || view === "settings-language"
+        ? "settings"
+        : view;
   const navigate = (section: StarterSection) => {
     const proceed = () => {
       setNotice("");
@@ -145,12 +153,12 @@ export default function App() {
         void loadDataset(datasets[0], section);
         return;
       }
-      const globalSection = section === "settings" || section === "logs";
+      const globalSection = section === "settings" || section === "logs" || section === "agent";
       if (!globalSection && section !== "workspace" && !selected) {
         setNotice("请先创建或选择一个数据集。");
         return;
       }
-      setView(section === "settings" ? "settings-sam" : section);
+      setView(section === "settings" ? "settings-llm" : section);
     };
     if (view === "annotation" && annotationDirty) {
       requestLeave(() => {
@@ -160,6 +168,67 @@ export default function App() {
       return;
     }
     proceed();
+  };
+
+  const resolveDataset = async (datasetId: string): Promise<Dataset | undefined> => {
+    const current = datasets.find((item) => item.id === datasetId) || selected;
+    if (current?.id === datasetId) return current;
+    const items = await api.listDatasets();
+    setDatasets(items);
+    return items.find((item) => item.id === datasetId);
+  };
+
+  const openAgentDataset = async (datasetId: string) => {
+    await run(async () => {
+      const dataset = await resolveDataset(datasetId);
+      if (!dataset) {
+        setError(`未找到数据集 ${datasetId}`);
+        return;
+      }
+      await loadDataset(dataset, "workspace");
+    });
+  };
+
+  const openAgentTrainingTask = async (datasetId: string | undefined, taskId: string) => {
+    await run(async () => {
+      let targetId = datasetId;
+      if (!targetId) {
+        const tasks = await api.listTrainingTasks();
+        targetId = tasks.items.find((item) => item.id === taskId)?.dataset_id;
+      }
+      if (!targetId) {
+        setError(`未找到训练任务 ${taskId} 所属数据集`);
+        return;
+      }
+      const dataset = await resolveDataset(targetId);
+      if (!dataset) {
+        setError(`未找到数据集 ${targetId}`);
+        return;
+      }
+      setFocusTrainingTaskId(taskId);
+      await loadDataset(dataset, "training");
+    });
+  };
+
+  const openAgentModel = async (datasetId: string | undefined, modelId: string) => {
+    await run(async () => {
+      let targetId = datasetId;
+      if (!targetId) {
+        const models = await api.listModels(undefined, true);
+        targetId = models.items.find((item) => item.id === modelId)?.dataset_id || undefined;
+      }
+      if (!targetId) {
+        setError(`未找到模型 ${modelId} 所属数据集`);
+        return;
+      }
+      const dataset = await resolveDataset(targetId);
+      if (!dataset) {
+        setError(`未找到数据集 ${targetId}`);
+        return;
+      }
+      setFocusModelId(modelId);
+      await loadDataset(dataset, "models");
+    });
   };
 
   return (
@@ -203,15 +272,41 @@ export default function App() {
           samCapabilities={samCapabilities}
         />
       ) : view === "training" && displayedDataset ? (
-        <TrainingView datasets={datasets} dataset={displayedDataset} onDatasetChange={(dataset) => void loadDataset(dataset, "training")} onOpenModels={() => setView("models")} />
+        <TrainingView
+          datasets={datasets}
+          dataset={displayedDataset}
+          onDatasetChange={(dataset) => void loadDataset(dataset, "training")}
+          onOpenModels={() => setView("models")}
+          focusTaskId={focusTrainingTaskId}
+          onFocusTaskConsumed={() => setFocusTrainingTaskId(undefined)}
+        />
       ) : view === "models" && displayedDataset ? (
-        <ModelsView dataset={displayedDataset} />
-      ) : view === "settings-sam" ? (
-        <SettingsView tab="sam" locale={locale} onLocaleChange={setLocale} onTabChange={(tab) => setView(tab === "sam" ? "settings-sam" : "settings-language")} onSamSettingsChange={() => { api.getSystemInfo().then((info) => setSamCapabilities(info.sam)).catch(() => undefined); }} />
-      ) : view === "settings-language" ? (
-        <SettingsView tab="language" locale={locale} onLocaleChange={setLocale} onTabChange={(tab) => setView(tab === "sam" ? "settings-sam" : "settings-language")} />
+        <ModelsView
+          dataset={displayedDataset}
+          focusModelId={focusModelId}
+          onFocusModelConsumed={() => setFocusModelId(undefined)}
+        />
+      ) : view === "settings-llm" || view === "settings-sam" || view === "settings-language" ? (
+        <SettingsView
+          tab={view === "settings-llm" ? "llm" : view === "settings-sam" ? "sam" : "language"}
+          locale={locale}
+          onLocaleChange={setLocale}
+          onTabChange={(tab) =>
+            setView(tab === "llm" ? "settings-llm" : tab === "sam" ? "settings-sam" : "settings-language")
+          }
+          onSamSettingsChange={() => {
+            api.getSystemInfo().then((info) => setSamCapabilities(info.sam)).catch(() => undefined);
+          }}
+        />
       ) : view === "logs" ? (
         <LogsView locale={locale} />
+      ) : view === "agent" ? (
+        <AgentView
+          locale={locale}
+          onOpenDataset={(datasetId) => void openAgentDataset(datasetId)}
+          onOpenTrainingTask={(datasetId, taskId) => void openAgentTrainingTask(datasetId, taskId)}
+          onOpenModel={(datasetId, modelId) => void openAgentModel(datasetId, modelId)}
+        />
       ) : (
         <DatasetHome
           datasets={datasets}

@@ -306,3 +306,103 @@ class AutoAnnotationTask(Base, TimestampMixin):
 
     dataset: Mapped[Dataset] = relationship(back_populates="auto_annotation_tasks")
     model: Mapped["ModelVersion"] = relationship(back_populates="auto_annotation_tasks")
+
+
+class AgentSession(Base, TimestampMixin):
+    __tablename__ = "agent_sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), default="New chat", nullable=False)
+
+    messages: Mapped[list["AgentMessage"]] = relationship(back_populates="session", cascade="all, delete-orphan")
+    runs: Mapped[list["AgentRun"]] = relationship(back_populates="session", cascade="all, delete-orphan")
+
+
+class AgentRun(Base, TimestampMixin):
+    __tablename__ = "agent_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')",
+            name="ck_agent_run_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("agent_sessions.id", ondelete="CASCADE"), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True, nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stop_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    session: Mapped[AgentSession] = relationship(back_populates="runs")
+    messages: Mapped[list["AgentMessage"]] = relationship(back_populates="run")
+    tool_calls: Mapped[list["AgentToolCall"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+    approvals: Mapped[list["AgentApproval"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+
+
+class AgentMessage(Base, TimestampMixin):
+    __tablename__ = "agent_messages"
+    __table_args__ = (
+        CheckConstraint("role IN ('user', 'assistant', 'system', 'tool')", name="ck_agent_message_role"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("agent_sessions.id", ondelete="CASCADE"), index=True, nullable=False)
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id", ondelete="SET NULL"), index=True, nullable=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    session: Mapped[AgentSession] = relationship(back_populates="messages")
+    run: Mapped[AgentRun | None] = relationship(back_populates="messages")
+
+
+class AgentToolCall(Base, TimestampMixin):
+    __tablename__ = "agent_tool_calls"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed', 'awaiting_approval')",
+            name="ck_agent_tool_call_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    arguments_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    run: Mapped[AgentRun] = relationship(back_populates="tool_calls")
+    approvals: Mapped[list["AgentApproval"]] = relationship(back_populates="tool_call")
+
+
+class AgentApproval(Base, TimestampMixin):
+    __tablename__ = "agent_approvals"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'executing', 'rejected', 'expired', 'executed')",
+            name="ck_agent_approval_status",
+        ),
+        UniqueConstraint("idempotency_key", name="uq_agent_approval_idempotency_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True, nullable=False)
+    tool_call_id: Mapped[str | None] = mapped_column(ForeignKey("agent_tool_calls.id", ondelete="SET NULL"), index=True, nullable=True)
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    result_task_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    run: Mapped[AgentRun] = relationship(back_populates="approvals")
+    tool_call: Mapped[AgentToolCall | None] = relationship(back_populates="approvals")

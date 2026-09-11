@@ -26,11 +26,13 @@ interface Props {
   dataset: Dataset;
   onDatasetChange: (dataset: Dataset) => void;
   onOpenModels?: () => void;
+  focusTaskId?: string;
+  onFocusTaskConsumed?: () => void;
 }
 
 const DRAFT_KEY = "ywa.training.draft";
 
-export function TrainingView({ datasets, dataset, onDatasetChange, onOpenModels }: Props) {
+export function TrainingView({ datasets, dataset, onDatasetChange, onOpenModels, focusTaskId, onFocusTaskConsumed }: Props) {
   const [tasks, setTasks] = useState<TrainingTask[]>([]);
   const [detailTaskId, setDetailTaskId] = useState<string>();
   const [logs, setLogs] = useState<TrainingLog>();
@@ -82,6 +84,12 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onOpenModels 
   useEffect(() => {
     refresh().catch((reason) => setError(errorMessage(reason)));
   }, [refresh]);
+
+  useEffect(() => {
+    if (!focusTaskId) return;
+    setDetailTaskId(focusTaskId);
+    onFocusTaskConsumed?.();
+  }, [focusTaskId, onFocusTaskConsumed]);
 
   useEffect(() => {
     if (typeof api.listTrainingDevices !== "function") return;

@@ -30,6 +30,8 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | PT 能力 | best.pt / last.pt 管理与下载 | PT 不需要格式转换 |
 | ONNX | FP32 导出 | 排除 FP16、INT8、TensorRT、OpenVINO |
 | 模型快速测试 | included | 受管 PT 对临时上传图片本机推理，结果不自动写回数据集 |
+| Agent MVP | bounded | 只读助手 + 人工确认后提交现有受管任务；不含 Workflow / 无人值守 |
+| Workflow / 无人值守 Agent | excluded | 不提供定时、触发器、任务自动串联或商业自动化闭环 |
 | 用户与权限 | 无登录、本地单用户 | Starter 不迁移 Auth / RBAC / License |
 | 默认网络边界 | `127.0.0.1` | 无认证模式不得默认暴露公网 |
 | 首发平台 | macOS、Linux | Windows 暂不承诺正式支持 |
@@ -53,7 +55,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 数据集级自动标注 | included | included | 从数据集卡片启动本地受管 PT 任务，默认跳过已有标注图片，支持显式类别映射、置信度/IoU、二次确认清理旧标注、进度、日志和取消；与训练在本机互斥，结果必须人工审核 |
 | SAM 设置 | included | included | 本地设置页管理启用状态、模型、设备、推理尺寸和无模型回退行为 |
 | 基础数据集校验 | included | included | 坐标、类别、空标注、格式问题可返回 |
-| 高级质量报告 | included | included | 覆盖率、类别分布、小目标、重复 bbox、重复/相似图片；不含 Agent 诊断 |
+| 高级质量报告 | included | included | 覆盖率、类别分布、小目标、重复 bbox、重复/相似图片；Agent 只读助手可摘要该报告，不另建诊断流水线 |
 | split 持久化 | included | included | 导出和训练复用已有 split |
 | YOLO 导入 | included | included | detect / segment / OBB 标签和 classify 目录均可导入 |
 | YOLO 导出 | included | included | 对应任务可训练数据结构正确 |
@@ -73,8 +75,9 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | pause / unpause | excluded | included | Starter 不依赖平台信号语义 |
 | checkpoint 列表 | included | included | 可查看 last / best 和可恢复 checkpoint |
 | 失败恢复 / checkpoint 续跑 | included | included | 从 Starter 受管 `last.pt` 创建新任务；不接受任意外部 checkpoint |
-| 独立 Evaluation | included | included | 对保存 split 同步运行本地评估并持久化错误样本；不含后台任务或 Workflow |
-| Workflow / Agent | excluded | included | 不触发商业自动化闭环 |
+| 独立 Evaluation | included | included | 复用已保存 split 运行本地评估并持久化错误样本；可由 Agent 在人工确认后提交，不含 Workflow 回调 |
+| Agent MVP（只读 + 确认提交） | bounded | included | 可问答数据集/训练/模型并经确认提交训练、评估、自动标注；提交后本轮结束，不自动串联 |
+| Workflow / 无人值守 Agent | excluded | included | 不提供定时、触发器、任务自动串联或商业自动化闭环 |
 | 云训练 / 远程分布式调度 | excluded | excluded/future | 本地多 GPU DDP 已纳入，但不提供云端 worker 或远程调度 |
 
 ### 3.3 模型管理与导出
@@ -100,7 +103,8 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 本地单用户 | included | supported | 默认只监听 localhost |
 | 登录 / RBAC / 用户管理 | excluded | included | Starter 无 AuthProvider 和用户表 |
 | 商业 License | excluded | included | Starter 无 offline_license 依赖 |
-| LLM / Agent / Workflow | excluded | included | Starter 无配置、路由和页面 |
+| Agent MVP（LLM 助手） | bounded | included | 会话/运行记录、只读工具、人工确认写工具；LLM 配置对齐上游设置页（`settings.json`，不进 SQLite）；无 Workflow |
+| Workflow / 无人值守自动化 | excluded | included | 无定时、触发器、任务自动串联或无人值守执行 |
 | Runtime logs 管理页 | included | included | 读取 Starter 数据目录中的本地后端日志，支持行数、级别和内容筛选 |
 | SQLite | included | included | Starter 唯一正式数据库 |
 | MySQL | excluded | included | Starter 不迁移 PyMySQL 和迁移指南 |
@@ -126,4 +130,5 @@ Community v2 必须在全新环境中完成：
 
 - Phase 2 开始后新增能力必须显式修改本矩阵，并同步调整工作量、测试和发布门槛。
 - native archive 和 Windows 正式支持属于后续候选，不得在迁移中隐式带入。
+- Agent MVP 扩展不得引入 Workflow、无人值守串联、任意路径/外部 PT/Shell，也不得把 Enterprise Agent 栈整模块复制进 Starter。
 - 如果某个排除功能被核心代码直接 import，应重写依赖边界，而不是把整个商业模块复制进 Starter。

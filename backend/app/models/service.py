@@ -242,7 +242,16 @@ class ModelService:
         self.get_model(session, model_id)
         return list(session.scalars(select(ModelTestRecord).where(ModelTestRecord.model_id == model_id).order_by(ModelTestRecord.created_at.desc())))
 
-    def create_evaluation(self, session: Session, model_id: str, split: str, confidence: float, iou: float) -> ModelEvaluationRecord:
+    def create_evaluation(
+        self,
+        session: Session,
+        model_id: str,
+        split: str,
+        confidence: float,
+        iou: float,
+        *,
+        evaluation_id: str | None = None,
+    ) -> ModelEvaluationRecord:
         model = self.get_model(session, model_id)
         if not model.dataset_id:
             raise ValidationError("evaluation_dataset_missing", "This managed model is not attached to a dataset.")
@@ -252,14 +261,18 @@ class ModelService:
         image_count = session.scalar(select(func.count()).select_from(ImageItem).where(ImageItem.dataset_id == model.dataset_id, ImageItem.split == split)) or 0
         if not image_count:
             raise ValidationError("evaluation_split_empty", f"The {split} split has no images to evaluate.")
-        evaluation_id = new_id("eval")
-        task_root = self.storage.evaluation_task_dir(evaluation_id)
+        if evaluation_id:
+            existing = session.get(ModelEvaluationRecord, evaluation_id)
+            if existing is not None:
+                return existing
+        resolved_id = evaluation_id or new_id("eval")
+        task_root = self.storage.evaluation_task_dir(resolved_id)
         try:
             export = export_dataset_directory(session, self.storage, model.dataset_id, task_root / "dataset")
             if not export["annotated_image_counts"].get(split):
                 raise ValidationError("evaluation_split_empty", f"The exported {split} split has no annotated images to evaluate.")
             record = ModelEvaluationRecord(
-                id=evaluation_id,
+                id=resolved_id,
                 model_id=model.id,
                 dataset_id=model.dataset_id,
                 split=split,
@@ -278,7 +291,7 @@ class ModelService:
             return record
         except Exception:
             session.rollback()
-            self.storage.remove_evaluation_task(evaluation_id)
+            self.storage.remove_evaluation_task(resolved_id)
             raise
 
     def run_evaluation(self, session: Session, evaluation_id: str) -> None:

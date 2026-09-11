@@ -57,8 +57,14 @@ npm --prefix frontend install
 | `YWA_SAM_MODEL` | 未设置 | 本地或 Ultralytics 可识别的 SAM 检查点；配置后启用真实的框提示和点提示推理 |
 | `YWA_SAM_DEVICE` | `auto` | SAM 推理设备请求；如果 Ultralytics 提供解析结果，响应会报告实际设备 |
 | `YWA_SAM_IMGSZ` | `1024` | SAM 推理图像尺寸 |
+| `YWA_AGENT_PROVIDER` | `mock` | Agent Provider；未配置真实密钥时使用本地 mock |
+| `YWA_AGENT_MODEL` | `mock-model` | Provider 模型名 |
+| `YWA_AGENT_API_KEY` | 未设置 | 仅环境变量，不写入 SQLite；日志会脱敏 |
+| `YWA_AGENT_BASE_URL` | 未设置 | 可选自定义 Provider Base URL |
+| `YWA_AGENT_MAX_TOOL_ROUNDS` | `8` | 单轮对话最大工具循环次数 |
+| `YWA_AGENT_APPROVAL_TTL_SECONDS` | `3600` | 写操作确认有效期（秒） |
 
-SAM 设置页面会将配置持久化到 `YWA_DATA_DIR/settings.json`；运行日志存储在 `YWA_DATA_DIR/logs/backend.log`，每个日志文件达到 2 MiB 后轮换并保留三个备份。日志页面展示最新内容时会合并这些日志文件。
+SAM 设置页面会将配置持久化到 `YWA_DATA_DIR/settings.json`；运行日志存储在 `YWA_DATA_DIR/logs/backend.log`，每个日志文件达到 2 MiB 后轮换并保留三个备份。日志页面展示最新内容时会合并这些日志文件。侧栏「助手」可查询数据集/训练/模型，并在人工确认后提交训练、评估或自动标注；确认后本轮结束，不会自动串联下一步。
 
 不要将数据库、导入目录或模型注册表指向 Enterprise 仓库的工作副本。
 
@@ -77,5 +83,5 @@ SAM 设置页面会将配置持久化到 `YWA_DATA_DIR/settings.json`；运行�
 
 - 仅支持本地单用户使用；不提供身份认证、RBAC、TLS、公开部署或多租户能力。
 - 仅支持 detect、segment、OBB 和单标签 classify；不支持 pose。
-- 自动标注从数据集卡片进入：默认跳过已有任意标注的图片，选择匹配任务类型的受管 PT，确认类别映射（未映射类别会跳过，不会按索引猜测），调整置信度/IoU 后启动；如需重跑已有标注，需明确关闭跳过选项。任务支持进度、日志和取消，生成结果会标记为自动来源，必须人工审核。训练与自动标注会在本机互斥执行。仍不提供 Agent、Workflow、evaluation、deployment 或文本提示分割。
+- 自动标注从数据集卡片进入：默认跳过已有任意标注的图片，选择匹配任务类型的受管 PT，确认类别映射（未映射类别会跳过，不会按索引猜测），调整置信度/IoU 后启动；如需重跑已有标注，需明确关闭跳过选项。任务支持进度、日志和取消，生成结果会标记为自动来源，必须人工审核。训练与自动标注会在本机互斥执行。Agent MVP（只读问答与人工确认后提交受管任务）在范围内；仍不提供 Workflow、无人值守 Agent 自动化、Deployment 或文本提示分割。本地评估（受管 PT + 已保存 split）可用。
 - CPU 已通过发布测试。CUDA 单卡/多卡和 Apple MPS 属于尽力支持，必须在目标环境中进行冒烟测试；不支持远程训练调度器。

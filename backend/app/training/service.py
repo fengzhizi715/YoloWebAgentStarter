@@ -42,8 +42,8 @@ class TrainingService:
         self.queue = queue
         self.queue.configure(session_factory, storage)
 
-    def create_task(self, session: Session, payload: TrainingTaskCreate) -> TrainingTaskResponse:
-        return self._create_task(session, payload)
+    def create_task(self, session: Session, payload: TrainingTaskCreate, *, task_id: str | None = None) -> TrainingTaskResponse:
+        return self._create_task(session, payload, task_id=task_id)
 
     def devices(self) -> list[dict[str, object]]:
         return [device.as_dict() for device in DeviceService().list_devices()]
@@ -88,6 +88,7 @@ class TrainingService:
         session: Session,
         payload: TrainingTaskCreate,
         *,
+        task_id: str | None = None,
         resume_checkpoint: Path | None = None,
         resume_run_dir: Path | None = None,
         resume_epoch: bool = False,
@@ -102,8 +103,12 @@ class TrainingService:
         model_reference = resolve_model_reference(payload.model, self.storage)
         self._validate_dataset_ready(session, dataset)
 
-        task_id = new_id("train")
-        task_root = self.storage.training_task_dir(task_id)
+        if task_id:
+            existing = session.get(TrainingTask, task_id)
+            if existing is not None:
+                return task_response(existing)
+        resolved_task_id = task_id or new_id("train")
+        task_root = self.storage.training_task_dir(resolved_task_id)
         export_root = task_root / "dataset"
         run_dir = resume_run_dir if resume_run_dir is not None else task_root / "run"
         try:
@@ -129,7 +134,7 @@ class TrainingService:
                 resume=resume_epoch,
             )
             task = TrainingTask(
-                id=task_id,
+                id=resolved_task_id,
                 dataset_id=dataset.id,
                 name=payload.name.strip(),
                 status="pending",
@@ -164,9 +169,9 @@ class TrainingService:
             session.refresh(task)
         except Exception:
             session.rollback()
-            self.storage.remove_training_task(task_id)
+            self.storage.remove_training_task(resolved_task_id)
             raise
-        self.queue.submit(task_id)
+        self.queue.submit(resolved_task_id)
         return task_response(task)
 
     def list_tasks(self, session: Session, dataset_id: str | None = None) -> TrainingTaskList:

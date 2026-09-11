@@ -16,6 +16,7 @@ from app.models.evaluation import YoloEvaluationRunner
 from app.logs.service import configure_runtime_logging
 from app.auto_annotation.queue import auto_annotation_queue
 from app.video_import.queue import video_import_queue
+from app.agent.service import AgentService
 
 
 def create_app(settings: Settings | None = None, *, run_migrations: bool = True) -> FastAPI:
@@ -39,6 +40,7 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
         training_queue.recover_orphaned()
         auto_annotation_queue.recover_orphaned()
         video_import_queue.recover_orphaned()
+        AgentService(database.session_factory, resolved).recover_orphaned()
         import logging
 
         logging.getLogger("ywa").info("YoloWebAgentStarter runtime initialized")

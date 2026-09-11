@@ -28,7 +28,14 @@ class AutoAnnotationService:
         self.storage = storage
         self.queue = queue
 
-    def create_task(self, session: Session, dataset_id: str, payload: AutoAnnotationCreateRequest) -> AutoAnnotationTask:
+    def create_task(
+        self,
+        session: Session,
+        dataset_id: str,
+        payload: AutoAnnotationCreateRequest,
+        *,
+        task_id: str | None = None,
+    ) -> AutoAnnotationTask:
         dataset = get_dataset(session, dataset_id)
         model = session.get(ModelVersion, payload.model_id)
         if model is None:
@@ -58,10 +65,14 @@ class AutoAnnotationService:
             )
         ) if model.dataset_id else []
         mapping = self._resolve_mapping(payload.class_mapping, target_classes, source_classes)
-        task_id = new_id("auto")
-        log_path = self.storage.auto_annotation_task_dir(task_id) / "auto_annotation.log"
+        if task_id:
+            existing = session.get(AutoAnnotationTask, task_id)
+            if existing is not None:
+                return existing
+        resolved_task_id = task_id or new_id("auto")
+        log_path = self.storage.auto_annotation_task_dir(resolved_task_id) / "auto_annotation.log"
         task = AutoAnnotationTask(
-            id=task_id,
+            id=resolved_task_id,
             dataset_id=dataset.id,
             model_id=model.id,
             task_type=dataset.task_type,

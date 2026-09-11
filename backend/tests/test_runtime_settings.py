@@ -38,6 +38,80 @@ def test_sam_settings_are_persisted_in_starter_data_dir(client):
     assert json.loads(settings_path.read_text(encoding="utf-8"))["sam"]["model"] == "sam_b.pt"
 
 
+def test_llm_settings_roundtrip_masks_api_key(client):
+    """Upstream contract: GET never returns api_key; empty PUT keeps existing key."""
+    first = client.put(
+        "/api/settings/llm",
+        json={
+            "enabled": True,
+            "provider": "openai-compatible",
+            "api_base": "http://127.0.0.1:9999/v1",
+            "api_key": "secret-key-do-not-leak",
+            "model": "gpt-test",
+            "temperature": 0.3,
+            "timeout_seconds": 45,
+            "auth_scheme": "bearer",
+            "auth_header_name": "",
+        },
+    )
+    assert first.status_code == 200, first.text
+    payload = first.json()
+    assert payload["enabled"] is True
+    assert payload["api_key_configured"] is True
+    assert "api_key" not in payload
+    assert payload["model"] == "gpt-test"
+
+    settings_path = client.app.state.settings.data_dir / "settings.json"
+    stored = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert stored["llm"]["api_key"] == "secret-key-do-not-leak"
+
+    kept = client.put(
+        "/api/settings/llm",
+        json={
+            "enabled": True,
+            "provider": "openai-compatible",
+            "api_base": "http://127.0.0.1:9999/v1",
+            "api_key": "",
+            "model": "gpt-test-2",
+            "temperature": 0.3,
+            "timeout_seconds": 45,
+            "auth_scheme": "bearer",
+            "auth_header_name": "",
+        },
+    )
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["model"] == "gpt-test-2"
+    assert kept.json()["api_key_configured"] is True
+    stored_again = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert stored_again["llm"]["api_key"] == "secret-key-do-not-leak"
+
+    status = client.get("/api/agent/status").json()
+    assert status["provider"] == "openai-compatible"
+    assert status["model"] == "gpt-test-2"
+    assert status["api_key_configured"] is True
+    assert "api_key" not in status
+
+
+def test_llm_settings_disabled_uses_mock_provider(client):
+    client.put(
+        "/api/settings/llm",
+        json={
+            "enabled": False,
+            "provider": "openai-compatible",
+            "api_base": "http://127.0.0.1:9999/v1",
+            "api_key": "secret",
+            "model": "gpt-test",
+            "temperature": 0.2,
+            "timeout_seconds": 30,
+            "auth_scheme": "bearer",
+            "auth_header_name": "",
+        },
+    )
+    status = client.get("/api/agent/status").json()
+    assert status["provider"] == "mock"
+    assert status["configured"] is True
+
+
 def test_sam_settings_update_clears_cached_model(monkeypatch, client):
     from app.sam import service as sam_service
 

@@ -19,6 +19,7 @@ Images → Dataset → Annotations → Validation → YOLO Import / Export → L
 - Admit only managed `best.pt`, `last.pt`, and static FP32 ONNX training artifacts into the model library.
 - Run upstream-compatible Ultralytics `val` in the background for managed PT models, retaining native metrics, logs, charts, and up to 200 reviewable error samples.
 - Start local auto-annotation jobs from a dataset card: by default, existing annotations are skipped; select a compatible managed PT model, explicitly confirm class mapping, adjust confidence/IoU, optionally clear old annotations, monitor progress, and cancel when needed. Training and auto-annotation are mutually exclusive on the same machine. Results are retained with the `auto` source and must be manually reviewed before training.
+- Agent MVP: ask read-only questions about datasets, training, and models, and produce reports grounded in tool results; write actions submit existing managed jobs only after explicit human confirmation, with no automatic follow-on chaining.
 - Bind to `127.0.0.1` by default; data, database, exports, and training files stay local.
 
 ## Features at a glance
@@ -34,7 +35,8 @@ Images → Dataset → Annotations → Validation → YOLO Import / Export → L
 | Evaluation | Background native YOLO `val`, persisted splits, job state and recovery, logs, confusion matrices, available PR curves, and up to 200 error samples; segment retains separate box/mask metrics and curves |
 | Models | Managed PT downloads from training artifacts, persisted image quick tests, same-dataset model comparisons, reviewable pre-annotations, auto-annotation jobs/logs, and deduplicated FP32 ONNX exports |
 | Data quality | Annotation coverage, class distribution, small-object, overlapping-bbox, and class-imbalance hints |
-| Security boundary | Managed storage root, import-directory boundary, ZIP resource-exhaustion limits, and localhost binding by default |
+| Agent MVP | Read-only assistant for dataset/training/model Q&A and reports; human-confirmed submission of existing training, evaluation, and auto-annotation jobs; persisted sessions and run records; LLM settings match upstream Settings UI (`settings.json`, never SQLite) with env defaults; secrets redacted from logs |
+| Security boundary | Managed storage root, import-directory boundary, ZIP resource-exhaustion limits, and localhost binding by default; Agent write actions require confirmation and forbid arbitrary paths, external PT, or shell commands |
 
 ### Supported tasks
 
@@ -45,7 +47,7 @@ Images → Dataset → Annotations → Validation → YOLO Import / Export → L
 | `obb` | Center, size, and angle in absolute pixels | Supported | Supported | OBB metrics, charts, and polygon-IoU error samples |
 | `classify` | One class per image | Standard `split/class/image` layout | Supported | Top-1 / top-5 metrics |
 
-Not included: login/RBAC, collaboration, agents, workflows, unattended agent automation, text-prompt segmentation, deployment, pose, cloud training, or remote distributed scheduling. Auto-annotation only supports locally managed Ultralytics PT models, and its results require manual review. See the complete boundary in the [Community v2 feature matrix](phase1_scope.md).
+Not included: login/RBAC, collaboration, Workflow, unattended Agent automation (schedules, triggers, automatic job chaining), text-prompt segmentation, Deployment, pose, cloud training, or remote distributed scheduling. The Agent must not execute arbitrary paths, external PT files, or shell commands. Auto-annotation only supports locally managed Ultralytics PT models, and its results require manual review. See the complete boundary in the [Community v2 feature matrix](phase1_scope.md).
 
 ## Quick start
 
@@ -119,7 +121,7 @@ All runtime data defaults to the Git-ignored `./data/` directory: the SQLite dat
 | `YWA_SAM_DEVICE` | `auto` | SAM device request, such as `mps` or `cpu` |
 | `YWA_SAM_IMGSZ` | `1024` | SAM inference size; values saved in Settings override the environment default |
 
-SAM settings are stored in `YWA_DATA_DIR/settings.json`; language preference is stored only in browser localStorage. Runtime logs are saved in `YWA_DATA_DIR/logs/backend.log`, rotate at 2 MiB, and retain three backups. The log page combines the latest lines from retained files.
+SAM and Agent LLM settings are stored in `YWA_DATA_DIR/settings.json` (API keys never appear in GET responses and are never written to SQLite); language preference is stored only in browser localStorage. Runtime logs are saved in `YWA_DATA_DIR/logs/backend.log`, rotate at 2 MiB, and retain three backups. The log page combines the latest lines from retained files.
 
 Before writing untrusted YOLO ZIP files, the application checks for at most 2,000 members, 100 MiB per member, 250 MiB total extracted size, and a 100:1 compression ratio. Images are streamed member by member into managed storage. Directory scans reject paths outside the import root and escaping symlinks.
 
@@ -149,7 +151,7 @@ Charts appear only when Ultralytics actually generates them. For example, a tiny
 
 The fixed Community v2 alignment baseline is YoloWebAgent commit `701f6e5a63b73f39e35f48fb6de7d2414401875a`. The evaluation runner, artifact manager, error-sample analyzer, and details panel retain upstream module boundaries while being trimmed to detect, segment, OBB, and classify. The Ultralytics 8.4.115 filename and JSON adapters are compatibility extensions to that upstream contract.
 
-At runtime, Starter never imports, reads, or depends on the YoloWebAgent/Enterprise repository, and it does not include its Auth, RBAC, License, Agent, Workflow, evaluation-automation callback, Deployment, or pose modules.
+At runtime, Starter never imports, reads, or depends on the YoloWebAgent/Enterprise repository, and it does not include its Auth, RBAC, License, Workflow, unattended Agent automation, evaluation-automation callback, Deployment, or pose modules. The Community Agent MVP is a local read-only assistant with human-confirmed job submission; it does not migrate the Enterprise Agent/Workflow stack.
 
 ## Project layout
 

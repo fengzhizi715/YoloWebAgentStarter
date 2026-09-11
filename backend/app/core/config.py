@@ -34,6 +34,16 @@ class Settings:
     sam_model: str | None = None
     sam_device: str = "auto"
     sam_img_size: int = 1024
+    agent_provider: str = "mock"
+    agent_model: str = "mock-model"
+    agent_api_key: str | None = None
+    agent_base_url: str | None = None
+    agent_max_tool_rounds: int = 8
+    agent_approval_ttl_seconds: int = 3600
+    agent_timeout_seconds: float = 60.0
+    agent_temperature: float = 0.2
+    agent_auth_scheme: str = "bearer"
+    agent_auth_header_name: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -68,6 +78,16 @@ class Settings:
             sam_model=os.getenv("YWA_SAM_MODEL") or None,
             sam_device=os.getenv("YWA_SAM_DEVICE", "auto"),
             sam_img_size=int(os.getenv("YWA_SAM_IMGSZ", "1024")),
+            agent_provider=(os.getenv("YWA_AGENT_PROVIDER") or "mock").strip().lower() or "mock",
+            agent_model=(os.getenv("YWA_AGENT_MODEL") or "mock-model").strip() or "mock-model",
+            agent_api_key=(os.getenv("YWA_AGENT_API_KEY") or "").strip() or None,
+            agent_base_url=(os.getenv("YWA_AGENT_BASE_URL") or "").strip() or None,
+            agent_max_tool_rounds=max(1, min(int(os.getenv("YWA_AGENT_MAX_TOOL_ROUNDS", "8")), 32)),
+            agent_approval_ttl_seconds=max(60, min(int(os.getenv("YWA_AGENT_APPROVAL_TTL_SECONDS", "3600")), 86_400)),
+            agent_timeout_seconds=max(5.0, min(float(os.getenv("YWA_AGENT_TIMEOUT_SECONDS", "60")), 300.0)),
+            agent_temperature=max(0.0, min(float(os.getenv("YWA_AGENT_TEMPERATURE", "0.2")), 2.0)),
+            agent_auth_scheme=(os.getenv("YWA_AGENT_AUTH_SCHEME") or "bearer").strip().lower() or "bearer",
+            agent_auth_header_name=(os.getenv("YWA_AGENT_AUTH_HEADER_NAME") or "").strip() or None,
         )
 
     def ensure_directories(self) -> None:

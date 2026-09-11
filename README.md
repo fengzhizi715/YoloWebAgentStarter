@@ -19,6 +19,7 @@ YoloWebAgent的社区版，面向本地单用户的 YOLO 数据集工作台：�
 - 训练结果只以受管的 `best.pt`、`last.pt` 和静态 FP32 ONNX 产物形式进入模型库。
 - 对受管 PT 后台运行上游同款 Ultralytics `val`，保存原生指标、日志、图表和最多 200 个可审阅错误样本。
 - 从数据集卡片启动本地自动标注任务：默认跳过已有标注的图片，选择匹配的受管 PT、显式确认类别映射、调整置信度/IoU、可选清理旧标注，实时查看进度并取消；训练与自动标注在本机互斥执行，结果保留为 `auto` 来源，必须人工审核后再训练。
+- Agent MVP：只读问答数据集/训练/模型并生成基于工具结果的报告；写操作须人工确认后才提交现有受管任务，不自动串联下一步。
 - 默认只监听 `127.0.0.1`，数据、数据库、导出和训练文件均保留在本机。
 
 ## 功能一览
@@ -34,7 +35,8 @@ YoloWebAgent的社区版，面向本地单用户的 YOLO 数据集工作台：�
 | 评估 | 后台原生 YOLO `val`、持久化 split、任务状态与恢复、日志、混淆矩阵、可用 PR 曲线和最多 200 个错误样本；segment 分别保留 box/mask 指标与曲线 |
 | 模型 | 训练产物的受管 PT 下载、持久化图片快速测试、同数据集模型比较、可审阅预标注、自动标注任务/日志、去重 FP32 ONNX 导出 |
 | 数据质量 | 标注覆盖率、类别分布、小目标、重叠 bbox 和类别失衡提示 |
-| 安全边界 | 受管存储根目录、导入目录边界、ZIP 防资源耗尽限制、默认 localhost 绑定 |
+| Agent MVP | 只读智能助手（数据集/训练/模型问答与报告）；经人工确认后提交训练、评估、自动标注等现有任务；会话与运行记录可持久化；LLM 可在设置页配置（写入 `settings.json`，不进 SQLite），环境变量作默认；日志对 API Key/敏感工具参数脱敏 |
+| 安全边界 | 受管存储根目录、导入目录边界、ZIP 防资源耗尽限制、默认 localhost 绑定；Agent 写操作须确认且禁止任意路径/外部 PT/Shell |
 
 ### 任务支持
 
@@ -45,7 +47,7 @@ YoloWebAgent的社区版，面向本地单用户的 YOLO 数据集工作台：�
 | `obb` | 绝对像素的中心、尺寸、角度 | 支持 | 支持 | OBB 指标、图表和 polygon IoU 错误样本 |
 | `classify` | 每张图片一个类别 | 标准 `split/class/image` 目录 | 支持 | top-1 / top-5 指标 |
 
-不包含：登录/RBAC、协作、Agent、Workflow、无人值守 Agent 自动化、文本提示分割、Deployment、pose、云训练和远程分布式调度。自动标注仅支持本地受管 Ultralytics PT，并且结果必须人工审核。完整边界见 [Community v2 功能矩阵](phase1_scope.md)。
+不包含：登录/RBAC、协作、Workflow、无人值守 Agent 自动化（定时、触发器、任务自动串联）、文本提示分割、Deployment、pose、云训练和远程分布式调度。Agent 不得执行任意路径、外部 PT 或 Shell 命令。自动标注仅支持本地受管 Ultralytics PT，并且结果必须人工审核。完整边界见 [Community v2 功能矩阵](phase1_scope.md)。
 
 ## 快速开始
 
@@ -159,7 +161,7 @@ yolo <detect|segment|obb|classify> val ... plots=True save_json=True exist_ok=Tr
 
 Community v2 的固定对齐基线是 YoloWebAgent commit `701f6e5a63b73f39e35f48fb6de7d2414401875a`。评估 runner、artifact manager、错误样本分析和详情面板沿用上游模块边界，并只裁剪到 detect、segment、OBB、classify；Ultralytics 8.4.115 文件名与 JSON 适配是该上游合约的兼容扩展。
 
-Starter 运行时不会 import、读取或依赖 YoloWebAgent/Enterprise 仓库，也不包含其 Auth、RBAC、License、Agent、Workflow、Evaluation 自动化回调、Deployment 或 pose 模块。
+Starter 运行时不会 import、读取或依赖 YoloWebAgent/Enterprise 仓库，也不包含其 Auth、RBAC、License、Workflow、无人值守 Agent 自动化、Evaluation 自动化回调、Deployment 或 pose 模块。Community Agent MVP 为本地只读助手与人工确认提交，不迁移 Enterprise Agent/Workflow 栈。
 
 ## 项目结构
 

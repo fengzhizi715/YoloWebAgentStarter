@@ -19,6 +19,9 @@ import type {
   AutoAnnotationTask,
   SamPrediction,
   SamSettings,
+  LLMSettings,
+  LLMConnectionTestResult,
+  LLMAuthScheme,
   SystemInfo,
   RuntimeLogResponse,
   VideoImportTask,
@@ -58,6 +61,17 @@ export const api = {
   getSystemInfo: () => request<SystemInfo>("/api/system/info"),
   getSamSettings: () => request<SamSettings>("/api/settings/sam"),
   updateSamSettings: (payload: Omit<SamSettings, "model_configured">) => request<SamSettings>("/api/settings/sam", json(payload, "PUT")),
+  getLlmSettings: () => request<LLMSettings>("/api/settings/llm"),
+  updateLlmSettings: (payload: Omit<LLMSettings, "api_key_configured"> & { api_key?: string }) =>
+    request<LLMSettings>("/api/settings/llm", json(payload, "PUT")),
+  testLlmConnection: (payload: {
+    api_base: string;
+    model: string;
+    api_key?: string;
+    timeout_seconds: number;
+    auth_scheme: LLMAuthScheme;
+    auth_header_name: string;
+  }) => request<LLMConnectionTestResult>("/api/settings/llm/test", json(payload)),
   listDatasets: () => request<Dataset[]>("/api/datasets"),
   createDataset: (name: string, taskType: TaskType, description?: string) =>
     request<Dataset>("/api/datasets", json({ name, task_type: taskType, description: description || null })),
@@ -135,7 +149,8 @@ export const api = {
   exportCocoUrl: (datasetId: string) => apiUrl(`/api/datasets/${datasetId}/export/coco`),
   importCoco: async (file: File, name: string, taskType: TaskType) => { const form = new FormData(); form.append("file", file); form.append("name", name); form.append("task_type", taskType); return request<{ dataset: Dataset; imported_images: number; imported_annotations: number }>("/api/datasets/import/coco", { method: "POST", body: form }); },
   tileDataset: (datasetId: string, data: { name: string; description?: string; tile_size: number; overlap: number; keep_empty_tiles: boolean }) => request<{ dataset_id: string; source_dataset_id: string; generated_images: number; generated_annotations: number; skipped_empty_tiles: number }>(`/api/datasets/${datasetId}/tile`, json(data)),
-  listTrainingTasks: (datasetId: string) => request<{ items: TrainingTask[] }>(`/api/training/tasks?dataset_id=${datasetId}`),
+  listTrainingTasks: (datasetId?: string) =>
+    request<{ items: TrainingTask[] }>(`/api/training/tasks${datasetId ? `?dataset_id=${encodeURIComponent(datasetId)}` : ""}`),
   listTrainingDevices: () => request<{ items: TrainingDevice[] }>("/api/training/devices"),
   createTrainingTask: (payload: {
     dataset_id: string;

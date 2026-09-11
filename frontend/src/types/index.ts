@@ -145,6 +145,27 @@ export interface SamSettings {
   model_configured: boolean;
 }
 
+/** Upstream-compatible LLM settings (GET never returns api_key). */
+export type LLMAuthScheme = "bearer" | "header" | "raw_authorization";
+
+export interface LLMSettings {
+  enabled: boolean;
+  provider: string;
+  api_base: string;
+  model: string;
+  temperature: number;
+  timeout_seconds: number;
+  api_key_configured: boolean;
+  auth_scheme: LLMAuthScheme;
+  auth_header_name: string;
+}
+
+export interface LLMConnectionTestResult {
+  ok: boolean;
+  message: string;
+  remote_test_performed: boolean;
+}
+
 export interface TrainingDevice {
   id: string;
   type: "cpu" | "mps" | "cuda";
@@ -336,3 +357,88 @@ export interface AutoAnnotationTask {
 }
 export interface AutoAnnotationLog { task_id: string; logs: string; line_count: number; }
 export interface ModelEvaluationRecord { id: string; model_id: string; dataset_id: string; split: SplitName; status: "pending" | "running" | "completed" | "failed"; confidence: number; iou: number; result_json: { split?: SplitName; task_type?: TaskType; metrics?: Record<string, number>; artifacts?: Record<string, string | null>; error_samples?: Array<{ image_file?: string; class_index?: number; confidence?: number; type: string; message: string }> }; error_message: string | null; export_path: string | null; data_path: string | null; run_dir: string | null; logs_path: string | null; created_at: string; started_at: string | null; finished_at: string | null; }
+
+export type AgentRunStatus = "pending" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
+export type AgentMessageRole = "user" | "assistant" | "system" | "tool";
+export type AgentToolCallStatus = "pending" | "running" | "completed" | "failed" | "awaiting_approval";
+export type AgentApprovalStatus = "pending" | "approved" | "executing" | "rejected" | "expired" | "executed";
+
+export interface AgentMessage {
+  id: string;
+  session_id: string;
+  run_id: string | null;
+  role: AgentMessageRole;
+  content: string;
+  sequence: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentToolCall {
+  id: string;
+  run_id: string;
+  name: string;
+  arguments_json: Record<string, unknown>;
+  result_json: Record<string, unknown> | null;
+  status: AgentToolCallStatus;
+  error_message: string | null;
+  sequence: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentApproval {
+  id: string;
+  run_id: string;
+  tool_call_id: string | null;
+  tool_name: string;
+  payload_json: Record<string, unknown>;
+  status: AgentApprovalStatus;
+  idempotency_key: string;
+  expires_at: string;
+  decided_at: string | null;
+  result_task_id: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentRun {
+  id: string;
+  session_id: string;
+  status: AgentRunStatus;
+  provider: string;
+  model: string;
+  error_message: string | null;
+  stop_requested: boolean;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  messages: AgentMessage[];
+  tool_calls: AgentToolCall[];
+  approvals: AgentApproval[];
+}
+
+export interface AgentSession {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  latest_run_status: AgentRunStatus | null;
+}
+
+export interface AgentSessionDetail extends AgentSession {
+  messages: AgentMessage[];
+  runs: AgentRun[];
+}
+
+export interface AgentProviderStatus {
+  provider: string;
+  model: string;
+  configured: boolean;
+  api_key_configured: boolean;
+  max_tool_rounds: number;
+  approval_ttl_seconds: number;
+}

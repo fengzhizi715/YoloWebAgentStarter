@@ -13,9 +13,11 @@ import { IconSearch } from "../components/training/icons";
 
 interface Props {
   dataset: Dataset;
+  focusModelId?: string;
+  onFocusModelConsumed?: () => void;
 }
 
-export function ModelsView({ dataset }: Props) {
+export function ModelsView({ dataset, focusModelId, onFocusModelConsumed }: Props) {
   const [models, setModels] = useState<ModelVersion[]>([]);
   const [detailId, setDetailId] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -42,6 +44,12 @@ export function ModelsView({ dataset }: Props) {
   useEffect(() => {
     refresh().catch((reason) => setError(errorMessage(reason)));
   }, [refresh]);
+
+  useEffect(() => {
+    if (!focusModelId) return;
+    setDetailId(focusModelId);
+    onFocusModelConsumed?.();
+  }, [focusModelId, onFocusModelConsumed]);
 
   const detailModel = useMemo(() => models.find((item) => item.id === detailId), [models, detailId]);
   const bestModel = useMemo(() => pickBestModel(models.filter((item) => item.status === "active")), [models]);
