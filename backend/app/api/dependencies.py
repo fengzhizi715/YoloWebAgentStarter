@@ -11,6 +11,8 @@ from app.training.runtime.queue import training_queue
 from app.models.evaluation import YoloEvaluationRunner
 from app.auto_annotation.queue import auto_annotation_queue
 from app.auto_annotation.service import AutoAnnotationService
+from app.video_import.queue import video_import_queue
+from app.video_import.service import VideoImportService
 
 
 def get_session(request: Request) -> Iterator[Session]:
@@ -35,3 +37,12 @@ def get_evaluation_runner(request: Request) -> YoloEvaluationRunner:
 
 def get_auto_annotation_service(request: Request) -> AutoAnnotationService:
     return AutoAnnotationService(request.app.state.database.session_factory, request.app.state.storage, auto_annotation_queue)
+
+
+def get_video_import_service(request: Request) -> VideoImportService:
+    return VideoImportService(
+        request.app.state.database.session_factory,
+        request.app.state.storage,
+        request.app.state.settings,
+        video_import_queue,
+    )

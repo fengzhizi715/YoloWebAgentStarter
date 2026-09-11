@@ -31,7 +31,56 @@ export interface ImageItem {
   height: number;
   split: SplitName;
   status: string;
+  source_type?: string;
+  source_file?: string | null;
+  source_group_id?: string | null;
+  source_video_task_id?: string | null;
+  source_checksum?: string | null;
+  frame_index?: number | null;
+  timestamp?: number | null;
   file_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VideoImportTask {
+  id: string;
+  dataset_id: string | null;
+  name: string;
+  task_type: TaskType;
+  split: SplitName;
+  status: "pending" | "running" | "completed" | "failed";
+  start_requested: boolean;
+  checkpoint_next_frame_index: number;
+  output_bytes: number;
+  config_json: {
+    sampling_mode: "fps" | "interval_seconds" | "frame_interval";
+    sampling_value: number;
+    start_seconds: number;
+    end_seconds: number | null;
+    split_strategy: "single" | "time_blocks";
+    time_block_seconds: number | null;
+    train_ratio: number | null;
+    val_ratio: number | null;
+    test_ratio: number | null;
+  };
+  source_file_name: string;
+  source_checksum: string;
+  video_info_json: {
+    width: number;
+    height: number;
+    fps: number;
+    frame_count: number;
+    duration_seconds: number;
+    size_bytes: number;
+    estimated_output_bytes: number;
+    estimate_sampled_frames: number;
+    estimated_split_counts: Record<SplitName, number>;
+  };
+  total_images: number;
+  generated_images: number;
+  progress_percent: number;
+  error_message: string | null;
   created_at: string;
   updated_at: string;
 }

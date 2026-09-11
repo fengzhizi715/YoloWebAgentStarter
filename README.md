@@ -25,7 +25,7 @@ YoloWebAgent的社区版，面向本地单用户的 YOLO 数据集工作台：�
 
 | 能力 | 说明 |
 |---|---|
-| 数据集 | 创建数据集和类别、浏览器上传、视频抽帧、受限本地目录扫描、持久化 split 管理、批量及可复现自动 split、只读重复/相似图报告和派生切片数据集 |
+| 数据集 | 创建数据集和类别、浏览器上传、视频预检与异步抽帧（MP4/MOV/AVI）、受限本地目录扫描、持久化 split 管理、批量及可复现自动 split、只读重复/相似图报告和派生切片数据集 |
 | 标注 | detect bbox、segment polygon、OBB 选择/移动/缩放/旋转、单标签 classify |
 | SAM | segment 的框选/点选建议；未配置模型时仅提供明确标识的 review-only 框形建议 |
 | 数据交换 | YOLO detect / segment / OBB ZIP 导入与导出；YOLO classify 目录布局导入与导出；detect/segment COCO ZIP 导入与导出 |
@@ -114,6 +114,8 @@ npm --prefix frontend install
 | `YWA_IMPORT_ROOT` | `./data/imports` | 服务端目录扫描允许访问的唯一根目录 |
 | `YWA_HOST` / `YWA_PORT` | `127.0.0.1` / `8000` | 后端监听地址和端口 |
 | `YWA_MAX_UPLOAD_MB` | `50` | 单次上传上限 |
+| `YWA_MAX_VIDEO_*` | 见示例文件 | 视频暂存大小、时长、抽帧数与输出大小限制 |
+| `YWA_MIN_VIDEO_FREE_MB` | `2048` | 视频抽帧开始及批处理时要求的最小空闲磁盘空间 |
 | `YWA_MAX_YOLO_ARCHIVE_*` | 见示例文件 | YOLO ZIP 的数量、解压大小和压缩比限制 |
 | `YWA_SAM_MODEL` | 未设置 | 启用真实 Ultralytics SAM 框/点提示的本地或命名检查点 |
 | `YWA_SAM_DEVICE` | `auto` | SAM 设备请求，例如 `mps` 或 `cpu` |
@@ -122,6 +124,14 @@ npm --prefix frontend install
 设置页的 SAM 配置保存在 `YWA_DATA_DIR/settings.json`，语言偏好只保存在浏览器 localStorage；运行日志保存在 `YWA_DATA_DIR/logs/backend.log`，按 2 MiB 轮转并保留 3 个备份，日志页会合并展示保留文件中的最新行。
 
 不可信 YOLO ZIP 在写入前会检查最多 2,000 个成员、单成员 100 MiB、总解压量 250 MiB 和 100:1 压缩比；图片逐成员流式写入受管目录。目录扫描会拒绝导入根目录外路径和逃逸的软链接。
+
+### 视频导入（核心可用版）
+
+从“数据集 → 导入数据集”打开 Import Center，选择“视频文件”并上传 MP4、MOV 或 AVI，指定新数据集名称、任务类型、初始 split，以及 FPS、时间间隔或帧间隔。上传完成后会解码代表帧，显示分辨率、时长、预计帧数和 JPEG 输出体积；确认“开始导入”后，本地串行任务才会生成 JPEG 帧并创建数据集。每张帧图都保存来源视频、校验和、任务 ID、帧号与时间戳，可用于审计。
+
+连续视频帧通常高度相似。默认策略会将所有帧放入选择的初始 split；也可选择“按连续时间块分配”，用指定窗口和 train/val/test 比例把整段时间块分到单一 split。请根据采集场景确认该策略是否适合评估分布。
+
+已提交的帧会写入检查点。服务重启时，已确认启动的运行中任务会从下一帧自动恢复；如果其部分生成的数据集已被手动删除，任务会失败，用户可选择重试并从头开始。
 
 ## 安全与运行边界
 

@@ -125,12 +125,6 @@ class DuplicateReport(BaseModel):
     groups: list[dict]
 
 
-class VideoImportResponse(BaseModel):
-    imported: int
-    source_fps: float
-    frame_count: int
-
-
 class TileDatasetRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=2000)
@@ -160,6 +154,13 @@ class ImageItemResponse(ORMModel):
     height: int
     split: SplitName
     status: str
+    source_type: str
+    source_file: str | None
+    source_group_id: str | None
+    source_video_task_id: str | None
+    source_checksum: str | None
+    frame_index: int | None
+    timestamp: float | None
     file_url: str
     created_at: datetime
     updated_at: datetime

@@ -35,7 +35,6 @@ from app.core.schemas import (
     SplitName,
     UploadImagesResponse,
     ValidationReport,
-    VideoImportResponse,
     YoloImportResponse,
 )
 from app.core.storage import Storage
@@ -57,7 +56,6 @@ from app.dataset.images import (
 )
 from app.dataset.preparation.duplicates import DuplicateDetector
 from app.dataset.preparation.tiling import DatasetTiler
-from app.dataset.video import import_video_frames
 from app.dataset.service import (
     create_class,
     create_dataset,
@@ -116,6 +114,13 @@ def _image_response(item: ImageItem) -> ImageItemResponse:
         height=item.height,
         split=item.split,
         status=item.status,
+        source_type=item.source_type,
+        source_file=item.source_file,
+        source_group_id=item.source_group_id,
+        source_video_task_id=item.source_video_task_id,
+        source_checksum=item.source_checksum,
+        frame_index=item.frame_index,
+        timestamp=item.timestamp,
         file_url=f"/api/images/{item.id}/file",
         created_at=item.created_at,
         updated_at=item.updated_at,
@@ -264,22 +269,6 @@ async def upload_images(
         uploads.append((file.filename or "image", content))
     items = add_uploaded_images(session, storage, dataset_id, uploads, split)
     return UploadImagesResponse(imported=len(items), items=[_image_response(item) for item in items])
-
-
-@router.post("/{dataset_id}/video/import", response_model=VideoImportResponse)
-async def import_video(
-    dataset_id: str,
-    file: UploadFile = File(...),
-    split: SplitName = Form(default="train"),
-    frame_interval: int = Form(default=30),
-    session: Session = Depends(get_session),
-    storage: Storage = Depends(get_storage),
-    settings: Settings = Depends(get_settings),
-) -> VideoImportResponse:
-    suffix = Path(file.filename or "video.mp4").suffix.lower()
-    if suffix not in {".mp4", ".mov", ".avi"}:
-        raise ValidationError("video_format_unsupported", "Supported video formats are mp4, mov and avi.")
-    return import_video_frames(session, storage, dataset_id, await _read_upload(file, settings.max_upload_bytes), suffix, split, frame_interval)
 
 
 @router.post("/{dataset_id}/images/scan", response_model=ScanImagesResponse)

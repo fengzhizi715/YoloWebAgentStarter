@@ -22,6 +22,11 @@ class Settings:
     port: int = 8000
     cors_origins: tuple[str, ...] = ("http://127.0.0.1:5173", "http://localhost:5173")
     max_upload_bytes: int = 50 * 1024 * 1024
+    max_video_upload_bytes: int = 2 * 1024 * 1024 * 1024
+    max_video_duration_seconds: int = 4 * 60 * 60
+    max_video_generated_images: int = 100_000
+    max_video_output_bytes: int = 50 * 1024 * 1024 * 1024
+    min_video_free_bytes: int = 2 * 1024 * 1024 * 1024
     max_yolo_archive_members: int = 2_000
     max_yolo_archive_member_bytes: int = 100 * 1024 * 1024
     max_yolo_archive_uncompressed_bytes: int = 250 * 1024 * 1024
@@ -51,6 +56,11 @@ class Settings:
             port=int(os.getenv("YWA_PORT", "8000")),
             cors_origins=origins,
             max_upload_bytes=int(os.getenv("YWA_MAX_UPLOAD_MB", "50")) * 1024 * 1024,
+            max_video_upload_bytes=int(os.getenv("YWA_MAX_VIDEO_UPLOAD_MB", "2048")) * 1024 * 1024,
+            max_video_duration_seconds=int(os.getenv("YWA_MAX_VIDEO_DURATION_SECONDS", str(4 * 60 * 60))),
+            max_video_generated_images=int(os.getenv("YWA_MAX_VIDEO_GENERATED_IMAGES", "100000")),
+            max_video_output_bytes=int(os.getenv("YWA_MAX_VIDEO_OUTPUT_MB", str(50 * 1024))) * 1024 * 1024,
+            min_video_free_bytes=int(os.getenv("YWA_MIN_VIDEO_FREE_MB", "2048")) * 1024 * 1024,
             max_yolo_archive_members=int(os.getenv("YWA_MAX_YOLO_ARCHIVE_MEMBERS", "2000")),
             max_yolo_archive_member_bytes=int(os.getenv("YWA_MAX_YOLO_ARCHIVE_MEMBER_MB", "100")) * 1024 * 1024,
             max_yolo_archive_uncompressed_bytes=int(os.getenv("YWA_MAX_YOLO_ARCHIVE_UNCOMPRESSED_MB", "250")) * 1024 * 1024,
@@ -69,3 +79,4 @@ class Settings:
         (self.data_dir / "runs" / "evaluation").mkdir(parents=True, exist_ok=True)
         (self.data_dir / "models").mkdir(parents=True, exist_ok=True)
         (self.data_dir / "tmp").mkdir(parents=True, exist_ok=True)
+        (self.data_dir / "video-imports").mkdir(parents=True, exist_ok=True)

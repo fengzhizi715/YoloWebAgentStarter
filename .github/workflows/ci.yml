@@ -38,6 +38,35 @@ jobs:
           MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
           YOLO_CONFIG_DIR: ${{ runner.temp }}/ultralytics
 
+  video-codec:
+    name: video codec (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m venv .venv
+      - if: runner.os != 'Windows'
+        run: .venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - if: runner.os == 'Windows'
+        run: .venv\Scripts\python.exe -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - if: runner.os != 'Windows'
+        run: PYTHONPATH=backend .venv/bin/pytest backend/tests/test_video_import.py
+        env:
+          MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+          YOLO_CONFIG_DIR: ${{ runner.temp }}/ultralytics
+      - if: runner.os == 'Windows'
+        run: .venv\Scripts\python.exe -m pytest backend/tests/test_video_import.py
+        env:
+          PYTHONPATH: backend
+          MPLCONFIGDIR: ${{ runner.temp }}\matplotlib
+          YOLO_CONFIG_DIR: ${{ runner.temp }}\ultralytics
+
   frontend:
     runs-on: ubuntu-latest
     steps:

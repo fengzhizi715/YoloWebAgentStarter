@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import re
 import shutil
+from hashlib import sha256
 from pathlib import Path
 from typing import BinaryIO
 
@@ -33,6 +34,7 @@ class Storage:
         self.auto_annotation_dir = self.data_dir / "runs" / "auto-annotation"
         self.models_dir = self.data_dir / "models"
         self.tmp_dir = self.data_dir / "tmp"
+        self.video_imports_dir = self.data_dir / "video-imports"
 
     def dataset_dir(self, dataset_id: str) -> Path:
         return self.datasets_dir / dataset_id
@@ -136,6 +138,45 @@ class Storage:
     def remove_dataset(self, dataset_id: str) -> None:
         directory = self.dataset_dir(dataset_id).resolve()
         if _is_within(directory, self.datasets_dir.resolve()) and directory.exists():
+            shutil.rmtree(directory)
+
+    def video_import_task_dir(self, task_id: str) -> Path:
+        candidate = (self.video_imports_dir / task_id).resolve()
+        if not _is_within(candidate, self.video_imports_dir.resolve()):
+            raise ValidationError("unsafe_path", "Video import path escapes managed storage.")
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+
+    def video_import_source_path(self, task_id: str, storage_name: str) -> Path:
+        directory = self.video_import_task_dir(task_id) / "input"
+        directory.mkdir(parents=True, exist_ok=True)
+        candidate = (directory / Path(storage_name).name).resolve()
+        if not _is_within(candidate, directory.resolve()):
+            raise ValidationError("unsafe_path", "Video source path escapes managed storage.")
+        return candidate
+
+    def write_video_upload(self, task_id: str, storage_name: str, source: BinaryIO, *, max_bytes: int) -> tuple[Path, int, str]:
+        """Stream one video into task-owned storage and return its SHA-256 digest."""
+
+        destination = self.video_import_source_path(task_id, storage_name)
+        digest = sha256()
+        total = 0
+        try:
+            with destination.open("wb") as target:
+                while chunk := source.read(1024 * 1024):
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise ValidationError("video_upload_too_large", "Video upload exceeds the configured limit.")
+                    digest.update(chunk)
+                    target.write(chunk)
+        except (OSError, ValidationError):
+            destination.unlink(missing_ok=True)
+            raise
+        return destination, total, digest.hexdigest()
+
+    def remove_video_import_task(self, task_id: str) -> None:
+        directory = (self.video_imports_dir / task_id).resolve()
+        if _is_within(directory, self.video_imports_dir.resolve()) and directory.exists():
             shutil.rmtree(directory)
 
     def export_path(self, file_name: str) -> Path:

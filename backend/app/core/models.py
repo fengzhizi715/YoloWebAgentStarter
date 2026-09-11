@@ -66,9 +66,46 @@ class ImageItem(Base, TimestampMixin):
     height: Mapped[int] = mapped_column(Integer, nullable=False)
     split: Mapped[str] = mapped_column(String(16), default="train", index=True, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="unannotated", index=True, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(32), default="image", nullable=False)
+    source_file: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    source_group_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    source_video_task_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    source_checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    frame_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    timestamp: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     dataset: Mapped[Dataset] = relationship(back_populates="images")
     annotations: Mapped[list["Annotation"]] = relationship(back_populates="image", cascade="all, delete-orphan")
+
+
+class VideoImportTask(Base, TimestampMixin):
+    __tablename__ = "video_import_tasks"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'running', 'completed', 'failed')", name="ck_video_import_task_status"),
+        CheckConstraint("task_type IN ('detect', 'segment', 'obb', 'classify')", name="ck_video_import_task_type"),
+        CheckConstraint("split IN ('train', 'val', 'test')", name="ck_video_import_task_split"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    dataset_id: Mapped[str | None] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    task_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    split: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True, nullable=False)
+    start_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    checkpoint_next_frame_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    checkpoint_next_sample_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    output_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    config_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    source_file_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_storage_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    video_info_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    total_images: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    generated_images: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    progress_percent: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    logs_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Annotation(Base, TimestampMixin):

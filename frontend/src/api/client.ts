@@ -21,6 +21,7 @@ import type {
   SamSettings,
   SystemInfo,
   RuntimeLogResponse,
+  VideoImportTask,
   TrainingDevice,
   ValidationReport,
 } from "../types";
@@ -100,7 +101,26 @@ export const api = {
   validateDataset: (datasetId: string) => request<ValidationReport>(`/api/datasets/${datasetId}/validate`, { method: "POST" }),
   qualityReport: (datasetId: string) => request<DatasetQualityReport>(`/api/datasets/${datasetId}/quality/report`),
   duplicateReport: (datasetId: string) => request<DuplicateReport>(`/api/datasets/${datasetId}/duplicates`),
-  importVideo: async (datasetId: string, file: File, split: SplitName, frameInterval: number) => { const form = new FormData(); form.append("file", file); form.append("split", split); form.append("frame_interval", String(frameInterval)); return request<{ imported: number; source_fps: number; frame_count: number }>(`/api/datasets/${datasetId}/video/import`, { method: "POST", body: form }); },
+  createVideoImport: async (payload: { file: File; name: string; taskType: TaskType; split: SplitName; samplingMode: "fps" | "interval_seconds" | "frame_interval"; samplingValue: number; startSeconds: number; endSeconds?: number; splitStrategy: "single" | "time_blocks"; timeBlockSeconds: number; trainRatio: number; valRatio: number; testRatio: number }) => {
+    const form = new FormData();
+    form.append("file", payload.file);
+    form.append("name", payload.name);
+    form.append("task_type", payload.taskType);
+    form.append("split", payload.split);
+    form.append("sampling_mode", payload.samplingMode);
+    form.append("sampling_value", String(payload.samplingValue));
+    form.append("start_seconds", String(payload.startSeconds));
+    if (payload.endSeconds !== undefined) form.append("end_seconds", String(payload.endSeconds));
+    form.append("split_strategy", payload.splitStrategy);
+    form.append("time_block_seconds", String(payload.timeBlockSeconds));
+    form.append("train_ratio", String(payload.trainRatio));
+    form.append("val_ratio", String(payload.valRatio));
+    form.append("test_ratio", String(payload.testRatio));
+    return request<VideoImportTask>("/api/video-imports", { method: "POST", body: form });
+  },
+  getVideoImport: (taskId: string) => request<VideoImportTask>(`/api/video-imports/${taskId}`),
+  startVideoImport: (taskId: string) => request<VideoImportTask>(`/api/video-imports/${taskId}/start`, { method: "POST" }),
+  retryVideoImport: (taskId: string) => request<VideoImportTask>(`/api/video-imports/${taskId}/retry`, { method: "POST" }),
   importYolo: async (file: File, name: string, taskType: TaskType) => {
     const form = new FormData();
     form.append("file", file);
