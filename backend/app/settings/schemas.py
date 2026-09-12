@@ -66,6 +66,9 @@ class LLMConnectionTestResult(BaseModel):
     ok: bool
     message: str
     remote_test_performed: bool = False
+    # Stable machine code for UI localization (message remains Chinese for logs/compat).
+    code: str = "ok"
+    http_status: int | None = None
 
 
 class LLMSettingsInternal(LLMSettingsOut):

@@ -7,13 +7,21 @@ import {
   summarizeApprovalParams,
 } from "../agent/approvalFields";
 import { isActiveRunStatus, linksFromText, linksFromToolCall, type AgentEntityLink } from "../agent/entityLinks";
+import {
+  approvalStatusLabel,
+  factKeyLabel,
+  reportTitle,
+  runStatusLabel,
+  toolNameLabel,
+  toolStatusLabel,
+} from "../agent/labels";
 import type { AppLocale } from "../locale";
 import type { AgentApproval, AgentMessage, AgentProviderStatus, AgentRun, AgentSession, AgentSessionDetail, AgentToolCall, Dataset } from "../types";
 
 const copy = {
   zh: {
     eyebrow: "AGENT",
-    title: "智能助手",
+    title: "智能体",
     subtitle: "可查询数据集、训练与模型；写操作需人工确认后才会创建任务。",
     newChat: "新会话",
     rename: "重命名",
@@ -48,13 +56,15 @@ const copy = {
     openTraining: "训练任务",
     openModel: "模型",
     user: "你",
-    assistant: "助手",
+    assistant: "智能体",
     tool: "工具",
     system: "系统",
+    itemCount: "共 {count} 项",
+    imagesCount: "{count} 张图片",
   },
   en: {
     eyebrow: "AGENT",
-    title: "Assistant",
+    title: "Agent",
     subtitle: "Query datasets, training, and models. Write actions run only after you confirm.",
     newChat: "New chat",
     rename: "Rename",
@@ -89,9 +99,11 @@ const copy = {
     openTraining: "Training task",
     openModel: "Model",
     user: "You",
-    assistant: "Assistant",
+    assistant: "Agent",
     tool: "Tool",
     system: "System",
+    itemCount: "{count} items",
+    imagesCount: "{count} images",
   },
 } as const;
 
@@ -175,7 +187,7 @@ export function AgentView({ locale, context, onOpenDataset, onOpenTrainingTask, 
   const createSession = async () => {
     setBusy(true); setError("");
     try {
-      const created = await agentApi.createSession();
+      const created = await agentApi.createSession(text.newChat);
       await refreshSessions();
       await loadSession(created.id);
       setDraft("");
@@ -351,7 +363,7 @@ export function AgentView({ locale, context, onOpenDataset, onOpenTrainingTask, 
                   <button className="agent-session-item" onClick={() => void loadSession(session.id)} disabled={busy}>
                     <strong>{session.title || session.id}</strong>
                     <small>
-                      {session.message_count} · {session.latest_run_status || "—"}
+                      {session.message_count} · {runStatusLabel(session.latest_run_status, locale)}
                     </small>
                   </button>
                   <button className="agent-session-delete" onClick={() => void removeSession(session.id)} disabled={busy} aria-label={text.delete}>×</button>
@@ -377,7 +389,7 @@ export function AgentView({ locale, context, onOpenDataset, onOpenTrainingTask, 
                   ) : (
                     <div className="agent-title-line"><h2>{detail.title}</h2><button className="button" type="button" onClick={() => setRenaming(true)} disabled={busy}>{text.rename}</button></div>
                   )}
-                  <p>{text.status}: {activeRun?.status || "—"}{busy ? ` · ${text.refreshing}` : ""}</p>
+                  <p>{text.status}: {runStatusLabel(activeRun?.status, locale)}{busy ? ` · ${text.refreshing}` : ""}</p>
                 </div>
                 {activeRun && isActiveRunStatus(activeRun.status) ? (
                   <button className="button" onClick={() => void cancelRun()} disabled={busy}>{text.cancel}</button>
@@ -520,8 +532,8 @@ function ToolPanel({
           return (
             <li key={tool.id} className="agent-tool-card">
               <button type="button" className="agent-tool-toggle" onClick={() => onToggle(tool.id)}>
-                <strong>{tool.name}</strong>
-                <span className={`agent-tool-status status-${tool.status}`}>{tool.status}</span>
+                <strong>{toolNameLabel(tool.name, locale)}</strong>
+                <span className={`agent-tool-status status-${tool.status}`}>{toolStatusLabel(tool.status, locale)}</span>
               </button>
               {links.length > 0 ? (
                 <div className="agent-entity-links">
@@ -533,7 +545,7 @@ function ToolPanel({
                   ))}
                 </div>
               ) : null}
-              <ToolReportCard tool={tool} locale={locale} />
+              <ToolReportCard tool={tool} locale={locale} text={text} />
               {open ? <ToolResultPreview tool={tool} /> : null}
             </li>
           );
@@ -592,19 +604,19 @@ function buildQuickPrompts(locale: AppLocale, context?: AgentPageContext): Array
       ];
 }
 
-function ToolReportCard({ tool, locale }: { tool: AgentToolCall; locale: AppLocale }) {
+function ToolReportCard({ tool, locale, text }: { tool: AgentToolCall; locale: AppLocale; text: AgentCopy }) {
   const result = tool.result_json;
   if (!result || typeof result !== "object" || Array.isArray(result)) return null;
   const payload = result as Record<string, unknown>;
   const items = Array.isArray(payload.items) ? payload.items.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object")) : [];
-  const isList = ["global_summary", "list_datasets", "training_list", "model_list", "evaluation_list"].includes(tool.name);
+  const isList = ["global_summary", "list_datasets", "training_list", "list_training_tasks", "model_list", "list_models", "evaluation_list", "list_model_evaluations"].includes(tool.name);
   const title = reportTitle(tool.name, locale);
   if (isList && items.length) {
     return (
       <section className="agent-report-card">
         <strong>{title}</strong>
-        <span>{locale === "zh" ? `共 ${String(payload.total ?? items.length)} 项` : `${String(payload.total ?? items.length)} items`}</span>
-        <ul>{items.slice(0, 4).map((item, index) => <li key={`${String(item.id ?? index)}`}>{reportItem(item)}</li>)}</ul>
+        <span>{text.itemCount.replace("{count}", String(payload.total ?? items.length))}</span>
+        <ul>{items.slice(0, 4).map((item, index) => <li key={`${String(item.id ?? index)}`}>{reportItem(item, text)}</li>)}</ul>
       </section>
     );
   }
@@ -613,19 +625,18 @@ function ToolReportCard({ tool, locale }: { tool: AgentToolCall; locale: AppLoca
   return (
     <section className="agent-report-card">
       <strong>{title}</strong>
-      <dl>{facts.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>
+      <dl>{facts.map(([key, value]) => <div key={key}><dt>{factKeyLabel(key, locale)}</dt><dd>{String(value)}</dd></div>)}</dl>
     </section>
   );
 }
 
-function reportTitle(name: string, locale: AppLocale): string {
-  const zh: Record<string, string> = { global_summary: "数据集概览", list_datasets: "数据集列表", training_list: "训练概览", model_list: "模型概览", evaluation_list: "评估概览", dataset_quality_report: "质量报告", dataset_validate: "校验结果" };
-  return locale === "zh" ? (zh[name] || "工具结果摘要") : name.replace(/_/g, " ");
-}
-
-function reportItem(item: Record<string, unknown>): string {
+function reportItem(item: Record<string, unknown>, text: AgentCopy): string {
   const name = String(item.name ?? item.id ?? "item");
-  const details = [item.task_type, item.status, item.image_count === undefined ? undefined : `${item.image_count} images`].filter(Boolean);
+  const details = [
+    item.task_type,
+    item.status,
+    item.image_count === undefined ? undefined : text.imagesCount.replace("{count}", String(item.image_count)),
+  ].filter(Boolean);
   return details.length ? `${name} · ${details.join(" · ")}` : name;
 }
 
@@ -704,8 +715,8 @@ function ApprovalCard({
   return (
     <article className="agent-approval-card" data-testid={`agent-approval-${approval.id}`}>
       <header>
-        <strong>{approval.tool_name}</strong>
-        <span>{approval.status}</span>
+        <strong>{toolNameLabel(approval.tool_name, locale)}</strong>
+        <span>{approvalStatusLabel(approval.status, locale)}</span>
       </header>
       {params.length > 0 ? (
         <div className="agent-plan-step-card__section">

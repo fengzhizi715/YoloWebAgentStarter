@@ -164,6 +164,8 @@ export interface LLMConnectionTestResult {
   ok: boolean;
   message: string;
   remote_test_performed: boolean;
+  code?: string;
+  http_status?: number | null;
 }
 
 export interface TrainingDevice {

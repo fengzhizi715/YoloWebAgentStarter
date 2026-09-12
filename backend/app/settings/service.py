@@ -158,12 +158,14 @@ class SettingsService:
                 ok=False,
                 message="请填写 API Base URL（例如 https://api.openai.com/v1）",
                 remote_test_performed=False,
+                code="missing_api_base",
             )
         if not api_key and "localhost" not in base and "127.0.0.1" not in base:
             return LLMConnectionTestResult(
                 ok=True,
                 message="未配置 API Key（可选），已跳过远端连接测试。需要调用 LLM 时再填写密钥即可。",
                 remote_test_performed=False,
+                code="skipped_no_key",
             )
 
         model = (payload.model or "").strip() or "gpt-4o-mini"
@@ -187,18 +189,21 @@ class SettingsService:
                 ok=False,
                 message="无法连接到服务器，请检查 API Base URL。",
                 remote_test_performed=True,
+                code="connect_error",
             )
         except httpx.TimeoutException:
             return LLMConnectionTestResult(
                 ok=False,
                 message="请求超时，请检查网络、代理或增大 Request Timeout 后重试",
                 remote_test_performed=True,
+                code="timeout",
             )
         except httpx.RequestError:
             return LLMConnectionTestResult(
                 ok=False,
                 message="请求失败，请检查 API Base URL 和网络连接。",
                 remote_test_performed=True,
+                code="request_error",
             )
 
         if response.is_success:
@@ -206,11 +211,14 @@ class SettingsService:
                 ok=True,
                 message="连接成功，Chat Completions 可正常使用。",
                 remote_test_performed=True,
+                code="ok",
             )
         return LLMConnectionTestResult(
             ok=False,
             message=f"API 返回 HTTP {response.status_code}",
             remote_test_performed=True,
+            code="http_error",
+            http_status=response.status_code,
         )
 
     def _resolved_api_key(self, llm: dict[str, Any]) -> str:

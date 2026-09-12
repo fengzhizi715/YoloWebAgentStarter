@@ -54,6 +54,8 @@ from app.training.service import TrainingService
 
 logger = logging.getLogger("ywa.agent")
 
+_DEFAULT_SESSION_TITLES = frozenset({"New chat", "新会话"})
+
 
 def message_response(row: AgentMessage) -> AgentMessageResponse:
     return AgentMessageResponse.model_validate(row)
@@ -261,7 +263,7 @@ class AgentService:
             sequence=next_sequence,
         )
         session.add(user_message)
-        if chat.title == "New chat":
+        if chat.title in _DEFAULT_SESSION_TITLES:
             chat.title = content[:80]
         session.commit()
 

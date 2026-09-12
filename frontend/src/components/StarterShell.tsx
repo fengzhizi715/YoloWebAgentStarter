@@ -38,13 +38,13 @@ export function StarterShell({ active, datasetName, onNavigate, locale = "zh", c
   return (
     <div className="starter-shell">
       <header className="starter-topbar">
-        <button className="starter-topbar-brand" onClick={() => onNavigate("workspace")} aria-label="返回数据集">
+        <button className="starter-topbar-brand" onClick={() => onNavigate("workspace")} aria-label={text.backToDatasets}>
           <span className="starter-topbar-mark">Y</span>
           <span>YoloWebAgent</span>
           <span className="starter-version">Starter</span>
         </button>
         <div className="starter-topbar-spacer" />
-        {datasetName ? <span className="starter-current-dataset">当前数据集：{datasetName}</span> : null}
+        {datasetName ? <span className="starter-current-dataset">{text.currentDataset}{datasetName}</span> : null}
         <span className="starter-local-badge"><LocalIcon /> {text.localMode}</span>
       </header>
       <div className="starter-layout">
@@ -53,15 +53,15 @@ export function StarterShell({ active, datasetName, onNavigate, locale = "zh", c
             <span className="starter-workspace-mark">Y</span>
             <div><strong>{text.workspace}</strong><small>{text.community}</small></div>
           </div>
-          <nav className="starter-menu" aria-label="主导航">
+          <nav className="starter-menu" aria-label={text.mainNav}>
             <span className="starter-menu-group-label">{text.workspaceGroup}</span>
             {navigation.slice(0, 5).map((item) => <NavigationButton key={item.id} item={item} active={active} labels={labels} onNavigate={onNavigate} />)}
             <span className="starter-menu-group-label">{text.settingsGroup}</span>
             {navigation.slice(5).map((item) => <NavigationButton key={item.id} item={item} active={active} labels={labels} onNavigate={onNavigate} />)}
           </nav>
           <div className="starter-sidebar-note">
-            <strong>本地 YOLO 工作台</strong>
-            <p>数据和模型仅保存在此设备。</p>
+            <strong>{text.sidebarNoteTitle}</strong>
+            <p>{text.sidebarNoteBody}</p>
           </div>
           <div className="starter-sidebar-version">YoloWebAgent Starter · v0.1</div>
         </aside>

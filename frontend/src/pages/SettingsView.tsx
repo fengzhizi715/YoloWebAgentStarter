@@ -82,6 +82,13 @@ const copy = {
     auto: "自动选择",
     show: "显示",
     hide: "隐藏",
+    testMissingApiBase: "请填写 API Base URL（例如 https://api.openai.com/v1）",
+    testSkippedNoKey: "未配置 API Key（可选），已跳过远端连接测试。需要调用 LLM 时再填写密钥即可。",
+    testConnectError: "无法连接到服务器，请检查 API Base URL。",
+    testTimeout: "请求超时，请检查网络、代理或增大 Request Timeout 后重试",
+    testRequestError: "请求失败，请检查 API Base URL 和网络连接。",
+    testOk: "连接成功，Chat Completions 可正常使用。",
+    testHttpError: "API 返回 HTTP {status}",
   },
   en: {
     eyebrow: "WORKSPACE SETTINGS",
@@ -154,10 +161,41 @@ const copy = {
     auto: "Auto",
     show: "Show",
     hide: "Hide",
+    testMissingApiBase: "Enter an API Base URL (for example https://api.openai.com/v1).",
+    testSkippedNoKey: "No API key configured (optional). Remote probe skipped; add a key before calling the LLM.",
+    testConnectError: "Could not reach the server. Check the API Base URL.",
+    testTimeout: "Request timed out. Check network/proxy or increase Request Timeout.",
+    testRequestError: "Request failed. Check the API Base URL and network.",
+    testOk: "Connection succeeded. Chat Completions is usable.",
+    testHttpError: "API returned HTTP {status}",
   },
 } as const;
 
 type SettingsText = (typeof copy)[AppLocale];
+
+function localizeLlmTestMessage(
+  text: SettingsText,
+  result: { message: string; code?: string; http_status?: number | null },
+): string {
+  switch (result.code) {
+    case "missing_api_base":
+      return text.testMissingApiBase;
+    case "skipped_no_key":
+      return text.testSkippedNoKey;
+    case "connect_error":
+      return text.testConnectError;
+    case "timeout":
+      return text.testTimeout;
+    case "request_error":
+      return text.testRequestError;
+    case "ok":
+      return text.testOk;
+    case "http_error":
+      return text.testHttpError.replace("{status}", String(result.http_status ?? ""));
+    default:
+      return result.message;
+  }
+}
 
 function emptyLlmForm(): LlmFormState {
   return {
@@ -329,8 +367,9 @@ function LlmSettingsPanel({ text }: { locale: AppLocale; text: SettingsText }) {
         auth_scheme: form.auth_scheme,
         auth_header_name: form.auth_scheme === "header" ? form.auth_header_name : "",
       });
-      setMessage(result.message);
-      if (!result.ok) setError(result.message);
+      const localized = localizeLlmTestMessage(text, result);
+      setMessage(localized);
+      if (!result.ok) setError(localized);
       else setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : text.error);

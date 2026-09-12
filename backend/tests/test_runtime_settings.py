@@ -144,6 +144,8 @@ def test_llm_connection_error_hides_provider_response_body(monkeypatch, client):
         "ok": False,
         "message": "API 返回 HTTP 503",
         "remote_test_performed": True,
+        "code": "http_error",
+        "http_status": 503,
     }
 
 

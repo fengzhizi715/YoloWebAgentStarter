@@ -128,10 +128,10 @@ describe("AgentView", () => {
     });
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
-    expect(container?.textContent).toContain("智能助手");
+    expect(container?.textContent).toContain("智能体");
     expect(container?.textContent).toContain("质量问答");
     expect(container?.textContent).toContain("列出有哪些数据集");
-    expect(container?.textContent).toContain("global_summary");
+    expect(container?.textContent).toContain("全局概览");
     expect(container?.textContent).toContain("数据集: agent-demo");
 
     const jump = Array.from(container?.querySelectorAll("button") ?? []).find((button) => button.textContent?.includes("数据集: agent-demo"));
