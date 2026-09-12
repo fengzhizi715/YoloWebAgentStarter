@@ -35,7 +35,7 @@ Images → Dataset → Annotations → Validation → YOLO Import / Export → L
 | Evaluation | Background native YOLO `val`, persisted splits, job state and recovery, logs, confusion matrices, available PR curves, and up to 200 error samples; segment retains separate box/mask metrics and curves |
 | Models | Managed PT downloads from training artifacts, persisted image quick tests, same-dataset model comparisons, reviewable pre-annotations, auto-annotation jobs/logs, and deduplicated FP32 ONNX exports |
 | Data quality | Annotation coverage, class distribution, small-object, overlapping-bbox, and class-imbalance hints |
-| Agent MVP | Read-only assistant for dataset/training/model Q&A and reports; human-confirmed submission of existing training, evaluation, and auto-annotation jobs; persisted sessions and run records; LLM settings match upstream Settings UI (`settings.json`, never SQLite) with env defaults; secrets redacted from logs |
+| Agent MVP | Read-only assistant for dataset/training/model Q&A and reports; human-confirmed submission of existing training, evaluation, and auto-annotation jobs; persisted sessions and run records; LLM settings match the Settings UI (`settings.json`, never SQLite) with environment defaults; secrets are redacted from logs |
 | Security boundary | Managed storage root, import-directory boundary, ZIP resource-exhaustion limits, and localhost binding by default; Agent write actions require confirmation and forbid arbitrary paths, external PT, or shell commands |
 
 ### Supported tasks
@@ -121,7 +121,7 @@ All runtime data defaults to the Git-ignored `./data/` directory: the SQLite dat
 | `YWA_SAM_DEVICE` | `auto` | SAM device request, such as `mps` or `cpu` |
 | `YWA_SAM_IMGSZ` | `1024` | SAM inference size; values saved in Settings override the environment default |
 
-SAM and Agent LLM settings are stored in `YWA_DATA_DIR/settings.json` (API keys never appear in GET responses and are never written to SQLite); language preference is stored only in browser localStorage. Runtime logs are saved in `YWA_DATA_DIR/logs/backend.log`, rotate at 2 MiB, and retain three backups. The log page combines the latest lines from retained files.
+SAM and Agent LLM settings are stored in `YWA_DATA_DIR/settings.json` (API keys never appear in GET responses and are never written to SQLite); environment variables provide defaults. Language preference is stored only in browser localStorage. Runtime logs are saved in `YWA_DATA_DIR/logs/backend.log`, rotate at 2 MiB, and retain three backups. The log page combines the latest lines from retained files.
 
 Before writing untrusted YOLO ZIP files, the application checks for at most 2,000 members, 100 MiB per member, 250 MiB total extracted size, and a 100:1 compression ratio. Images are streamed member by member into managed storage. Directory scans reject paths outside the import root and escaping symlinks.
 

@@ -8,7 +8,7 @@ import {
 } from "../agent/approvalFields";
 import { isActiveRunStatus, linksFromText, linksFromToolCall, type AgentEntityLink } from "../agent/entityLinks";
 import type { AppLocale } from "../locale";
-import type { AgentApproval, AgentMessage, AgentProviderStatus, AgentRun, AgentSession, AgentSessionDetail, AgentToolCall } from "../types";
+import type { AgentApproval, AgentMessage, AgentProviderStatus, AgentRun, AgentSession, AgentSessionDetail, AgentToolCall, Dataset } from "../types";
 
 const copy = {
   zh: {
@@ -16,6 +16,9 @@ const copy = {
     title: "智能助手",
     subtitle: "可查询数据集、训练与模型；写操作需人工确认后才会创建任务。",
     newChat: "新会话",
+    rename: "重命名",
+    saveName: "保存名称",
+    cancelRename: "取消",
     sessions: "会话",
     emptySessions: "还没有会话。",
     delete: "删除",
@@ -39,6 +42,8 @@ const copy = {
     providerUnsupported: "当前 Provider 未就绪，请到「设置 → Agent LLM」配置或关闭 LLM 使用本地规则。",
     status: "状态",
     emptyChat: "选择或新建会话后开始提问。",
+    quickPrompts: "快捷提问",
+    contextDataset: "当前数据集上下文",
     openDataset: "数据集",
     openTraining: "训练任务",
     openModel: "模型",
@@ -52,6 +57,9 @@ const copy = {
     title: "Assistant",
     subtitle: "Query datasets, training, and models. Write actions run only after you confirm.",
     newChat: "New chat",
+    rename: "Rename",
+    saveName: "Save name",
+    cancelRename: "Cancel",
     sessions: "Sessions",
     emptySessions: "No sessions yet.",
     delete: "Delete",
@@ -75,6 +83,8 @@ const copy = {
     providerUnsupported: "Provider is not ready. Configure it under Settings → Agent LLM, or disable LLM for local rules.",
     status: "Status",
     emptyChat: "Select or create a session to start.",
+    quickPrompts: "Quick prompts",
+    contextDataset: "Current dataset context",
     openDataset: "Dataset",
     openTraining: "Training task",
     openModel: "Model",
@@ -93,11 +103,16 @@ export interface AgentNavigationHandlers {
   onOpenModel: (datasetId: string | undefined, modelId: string) => void;
 }
 
-interface Props extends AgentNavigationHandlers {
-  locale: AppLocale;
+export interface AgentPageContext {
+  dataset?: Pick<Dataset, "id" | "name">;
 }
 
-export function AgentView({ locale, onOpenDataset, onOpenTrainingTask, onOpenModel }: Props) {
+interface Props extends AgentNavigationHandlers {
+  locale: AppLocale;
+  context?: AgentPageContext;
+}
+
+export function AgentView({ locale, context, onOpenDataset, onOpenTrainingTask, onOpenModel }: Props) {
   const text = copy[locale];
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [sessionId, setSessionId] = useState<string>();
@@ -107,6 +122,8 @@ export function AgentView({ locale, onOpenDataset, onOpenTrainingTask, onOpenMod
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
+  const [renaming, setRenaming] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const activeRun = useMemo(() => {
@@ -124,6 +141,7 @@ export function AgentView({ locale, onOpenDataset, onOpenTrainingTask, onOpenMod
     const next = await agentApi.getSession(id);
     setDetail(next);
     setSessionId(next.id);
+    setTitleDraft(next.title);
     return next;
   };
 
@@ -185,9 +203,8 @@ export function AgentView({ locale, onOpenDataset, onOpenTrainingTask, onOpenMod
     }
   };
 
-  const sendMessage = async (event: FormEvent) => {
-    event.preventDefault();
-    const content = draft.trim();
+  const submitMessage = async (raw: string) => {
+    const content = raw.trim();
     if (!content || busy) return;
     setBusy(true); setError("");
     try {
@@ -202,6 +219,26 @@ export function AgentView({ locale, onOpenDataset, onOpenTrainingTask, onOpenMod
       await loadSession(targetId);
       await refreshSessions();
       if (isActiveRunStatus(run.status) && sessionId) await loadSession(targetId);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Request failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendMessage = (event: FormEvent) => {
+    event.preventDefault();
+    void submitMessage(draft);
+  };
+
+  const renameSession = async () => {
+    if (!sessionId || !titleDraft.trim() || busy) return;
+    setBusy(true); setError("");
+    try {
+      await agentApi.updateSession(sessionId, titleDraft.trim());
+      await loadSession(sessionId);
+      await refreshSessions();
+      setRenaming(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Request failed");
     } finally {
@@ -258,6 +295,7 @@ export function AgentView({ locale, onOpenDataset, onOpenTrainingTask, onOpenMod
     (item) => item.status === "pending" || item.status === "approved",
   );
   const lastUserMessage = [...messages].reverse().find((item) => item.role === "user");
+  const quickPrompts = buildQuickPrompts(locale, context);
   const canRetryLast =
     Boolean(lastUserMessage?.content) &&
     !busy &&
@@ -330,7 +368,15 @@ export function AgentView({ locale, onOpenDataset, onOpenTrainingTask, onOpenMod
             <>
               <header className="agent-chat-head">
                 <div>
-                  <h2>{detail.title}</h2>
+                  {renaming ? (
+                    <div className="agent-title-editor">
+                      <input value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} maxLength={255} />
+                      <button className="button primary" type="button" onClick={() => void renameSession()} disabled={busy || !titleDraft.trim()}>{text.saveName}</button>
+                      <button className="button" type="button" onClick={() => { setTitleDraft(detail.title); setRenaming(false); }} disabled={busy}>{text.cancelRename}</button>
+                    </div>
+                  ) : (
+                    <div className="agent-title-line"><h2>{detail.title}</h2><button className="button" type="button" onClick={() => setRenaming(true)} disabled={busy}>{text.rename}</button></div>
+                  )}
                   <p>{text.status}: {activeRun?.status || "—"}{busy ? ` · ${text.refreshing}` : ""}</p>
                 </div>
                 {activeRun && isActiveRunStatus(activeRun.status) ? (
@@ -353,10 +399,25 @@ export function AgentView({ locale, onOpenDataset, onOpenTrainingTask, onOpenMod
                 <div ref={bottomRef} />
               </div>
 
+              <QuickPromptBar
+                prompts={quickPrompts}
+                title={text.quickPrompts}
+                disabled={busy || Boolean(activeRun && isActiveRunStatus(activeRun.status))}
+                onSelect={(prompt) => void submitMessage(prompt)}
+              />
+
+              {context?.dataset ? (
+                <div className="agent-context-card">
+                  <strong>{text.contextDataset}</strong>
+                  <span>{context.dataset.name} · <code>{context.dataset.id}</code></span>
+                </div>
+              ) : null}
+
               {focusRun ? (
                 <ToolPanel
                   run={focusRun}
                   text={text}
+                  locale={locale}
                   expanded={expandedTools}
                   onToggle={(id) => setExpandedTools((current) => ({ ...current, [id]: !current[id] }))}
                   onOpenLink={openLink}
@@ -374,7 +435,7 @@ export function AgentView({ locale, onOpenDataset, onOpenTrainingTask, onOpenMod
                 />
               ) : null}
 
-              <form className="agent-composer" onSubmit={(event) => void sendMessage(event)}>
+              <form className="agent-composer" onSubmit={sendMessage}>
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
@@ -434,12 +495,14 @@ function MessageBubble({
 function ToolPanel({
   run,
   text,
+  locale,
   expanded,
   onToggle,
   onOpenLink,
 }: {
   run: AgentRun;
   text: AgentCopy;
+  locale: AppLocale;
   expanded: Record<string, boolean>;
   onToggle: (id: string) => void;
   onOpenLink: (link: AgentEntityLink) => void;
@@ -470,6 +533,7 @@ function ToolPanel({
                   ))}
                 </div>
               ) : null}
+              <ToolReportCard tool={tool} locale={locale} />
               {open ? <ToolResultPreview tool={tool} /> : null}
             </li>
           );
@@ -477,6 +541,92 @@ function ToolPanel({
       </ul>
     </section>
   );
+}
+
+function QuickPromptBar({
+  prompts,
+  title,
+  disabled,
+  onSelect,
+}: {
+  prompts: Array<{ label: string; prompt: string }>;
+  title: string;
+  disabled: boolean;
+  onSelect: (prompt: string) => void;
+}) {
+  return (
+    <section className="agent-quick-prompts" aria-label={title}>
+      <strong>{title}</strong>
+      <div>{prompts.map((item) => <button key={item.label} type="button" className="button" disabled={disabled} onClick={() => onSelect(item.prompt)}>{item.label}</button>)}</div>
+    </section>
+  );
+}
+
+function buildQuickPrompts(locale: AppLocale, context?: AgentPageContext): Array<{ label: string; prompt: string }> {
+  const dataset = context?.dataset;
+  if (dataset) {
+    return locale === "zh"
+      ? [
+          { label: "数据集质量报告", prompt: `请给出数据集 ${dataset.name}（${dataset.id}）的质量报告。` },
+          { label: "校验数据集", prompt: `请校验数据集 ${dataset.id}，并总结阻断训练的问题。` },
+          { label: "训练建议", prompt: `请基于数据集 ${dataset.id} 给出训练建议，不要创建任务。` },
+          { label: "查看最新模型", prompt: `请列出数据集 ${dataset.id} 的最新受管模型和评估结果。` },
+        ]
+      : [
+          { label: "Dataset quality", prompt: `Give a quality report for dataset ${dataset.name} (${dataset.id}).` },
+          { label: "Validate dataset", prompt: `Validate dataset ${dataset.id} and summarize blockers for training.` },
+          { label: "Training advice", prompt: `Give training advice for dataset ${dataset.id}; do not create a task.` },
+          { label: "Latest model", prompt: `List the latest managed models and evaluations for dataset ${dataset.id}.` },
+        ];
+  }
+  return locale === "zh"
+    ? [
+        { label: "列出数据集", prompt: "列出当前数据集并给出概览。" },
+        { label: "查看训练", prompt: "总结最近训练任务的状态和失败原因。" },
+        { label: "查看模型", prompt: "列出当前受管模型和最近评估结果。" },
+      ]
+    : [
+        { label: "List datasets", prompt: "List the current datasets with a brief overview." },
+        { label: "Review training", prompt: "Summarize recent training status and failures." },
+        { label: "Review models", prompt: "List managed models and recent evaluation results." },
+      ];
+}
+
+function ToolReportCard({ tool, locale }: { tool: AgentToolCall; locale: AppLocale }) {
+  const result = tool.result_json;
+  if (!result || typeof result !== "object" || Array.isArray(result)) return null;
+  const payload = result as Record<string, unknown>;
+  const items = Array.isArray(payload.items) ? payload.items.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object")) : [];
+  const isList = ["global_summary", "list_datasets", "training_list", "model_list", "evaluation_list"].includes(tool.name);
+  const title = reportTitle(tool.name, locale);
+  if (isList && items.length) {
+    return (
+      <section className="agent-report-card">
+        <strong>{title}</strong>
+        <span>{locale === "zh" ? `共 ${String(payload.total ?? items.length)} 项` : `${String(payload.total ?? items.length)} items`}</span>
+        <ul>{items.slice(0, 4).map((item, index) => <li key={`${String(item.id ?? index)}`}>{reportItem(item)}</li>)}</ul>
+      </section>
+    );
+  }
+  const facts = ["valid", "image_count", "annotated_image_count", "class_count", "status", "coverage"].flatMap((key) => payload[key] === undefined ? [] : [[key, payload[key]] as const]);
+  if (!facts.length) return null;
+  return (
+    <section className="agent-report-card">
+      <strong>{title}</strong>
+      <dl>{facts.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>
+    </section>
+  );
+}
+
+function reportTitle(name: string, locale: AppLocale): string {
+  const zh: Record<string, string> = { global_summary: "数据集概览", list_datasets: "数据集列表", training_list: "训练概览", model_list: "模型概览", evaluation_list: "评估概览", dataset_quality_report: "质量报告", dataset_validate: "校验结果" };
+  return locale === "zh" ? (zh[name] || "工具结果摘要") : name.replace(/_/g, " ");
+}
+
+function reportItem(item: Record<string, unknown>): string {
+  const name = String(item.name ?? item.id ?? "item");
+  const details = [item.task_type, item.status, item.image_count === undefined ? undefined : `${item.image_count} images`].filter(Boolean);
+  return details.length ? `${name} · ${details.join(" · ")}` : name;
 }
 
 function ToolResultPreview({ tool }: { tool: AgentToolCall }) {

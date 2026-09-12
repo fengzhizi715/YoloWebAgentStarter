@@ -106,7 +106,7 @@ def build_provider(provider_name: str, settings: Settings | None = None) -> Any:
 
 
 def build_provider_from_llm(llm: LLMSettingsInternal) -> Any:
-    """Resolve Agent provider from Settings UI LLM config (upstream enabled flag)."""
+    """Resolve the provider from Settings UI LLM configuration."""
     if not llm.enabled:
         return MockAgentProvider()
     provider = (llm.provider or "openai-compatible").strip().lower() or "openai-compatible"
@@ -133,7 +133,7 @@ def build_provider_from_llm(llm: LLMSettingsInternal) -> Any:
 
 
 def llm_is_usable(llm: LLMSettingsInternal) -> bool:
-    """Upstream LLMPlanner._is_configured equivalent for tool-calling providers."""
+    """Return whether persisted settings describe a callable Provider."""
     if not llm.enabled:
         return False
     provider = (llm.provider or "openai-compatible").strip().lower() or "openai-compatible"

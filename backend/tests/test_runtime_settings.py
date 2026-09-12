@@ -39,7 +39,7 @@ def test_sam_settings_are_persisted_in_starter_data_dir(client):
 
 
 def test_llm_settings_roundtrip_masks_api_key(client):
-    """Upstream contract: GET never returns api_key; empty PUT keeps existing key."""
+    """GET never returns api_key; an empty PUT keeps the existing key."""
     first = client.put(
         "/api/settings/llm",
         json={
@@ -110,6 +110,41 @@ def test_llm_settings_disabled_uses_mock_provider(client):
     status = client.get("/api/agent/status").json()
     assert status["provider"] == "mock"
     assert status["configured"] is True
+
+
+def test_llm_connection_error_hides_provider_response_body(monkeypatch, client):
+    class FakeResponse:
+        is_success = False
+        status_code = 503
+        text = "provider-body-secret"
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def post(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr("app.settings.service.httpx.Client", lambda **_kwargs: FakeClient())
+    response = client.post(
+        "/api/settings/llm/test",
+        json={
+            "api_base": "http://127.0.0.1:9999/v1",
+            "model": "mock-model",
+            "timeout_seconds": 5,
+            "auth_scheme": "bearer",
+            "auth_header_name": "",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "ok": False,
+        "message": "API 返回 HTTP 503",
+        "remote_test_performed": True,
+    }
 
 
 def test_sam_settings_update_clears_cached_model(monkeypatch, client):

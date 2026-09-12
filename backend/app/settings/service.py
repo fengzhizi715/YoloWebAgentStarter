@@ -25,7 +25,7 @@ from app.settings.schemas import (
 
 
 class SettingsService:
-    """Persist workspace settings in `{data_dir}/settings.json` (upstream pattern).
+    """Persist workspace settings in `{data_dir}/settings.json`.
 
     Agent LLM credentials may live here (never in SQLite). Env vars remain defaults.
     """
@@ -149,7 +149,7 @@ class SettingsService:
         return self.get_llm_settings()
 
     def test_llm_connection(self, payload: LLMConnectionTestRequest) -> LLMConnectionTestResult:
-        """Upstream-style connectivity probe; does not persist."""
+        """Probe an endpoint without persisting form values or response bodies."""
         current = self.get_llm_settings_internal()
         api_key = (payload.api_key or "").strip() or current.api_key.strip()
         base = (payload.api_base or "").strip()
@@ -182,16 +182,24 @@ class SettingsService:
                         "max_tokens": 8,
                     },
                 )
-        except httpx.ConnectError as exc:
-            return LLMConnectionTestResult(ok=False, message=f"无法连接到服务器：{exc}", remote_test_performed=True)
+        except httpx.ConnectError:
+            return LLMConnectionTestResult(
+                ok=False,
+                message="无法连接到服务器，请检查 API Base URL。",
+                remote_test_performed=True,
+            )
         except httpx.TimeoutException:
             return LLMConnectionTestResult(
                 ok=False,
                 message="请求超时，请检查网络、代理或增大 Request Timeout 后重试",
                 remote_test_performed=True,
             )
-        except httpx.RequestError as exc:
-            return LLMConnectionTestResult(ok=False, message=f"请求失败：{exc}", remote_test_performed=True)
+        except httpx.RequestError:
+            return LLMConnectionTestResult(
+                ok=False,
+                message="请求失败，请检查 API Base URL 和网络连接。",
+                remote_test_performed=True,
+            )
 
         if response.is_success:
             return LLMConnectionTestResult(
@@ -199,11 +207,11 @@ class SettingsService:
                 message="连接成功，Chat Completions 可正常使用。",
                 remote_test_performed=True,
             )
-        snippet = response.text.strip().replace("\n", " ")[:400]
-        msg = f"API 返回 HTTP {response.status_code}"
-        if snippet:
-            msg = f"{msg}：{snippet}"
-        return LLMConnectionTestResult(ok=False, message=msg, remote_test_performed=True)
+        return LLMConnectionTestResult(
+            ok=False,
+            message=f"API 返回 HTTP {response.status_code}",
+            remote_test_performed=True,
+        )
 
     def _resolved_api_key(self, llm: dict[str, Any]) -> str:
         raw = llm.get("api_key")

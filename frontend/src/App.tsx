@@ -303,6 +303,7 @@ export default function App() {
       ) : view === "agent" ? (
         <AgentView
           locale={locale}
+          context={selected ? { dataset: { id: selected.id, name: selected.name } } : undefined}
           onOpenDataset={(datasetId) => void openAgentDataset(datasetId)}
           onOpenTrainingTask={(datasetId, taskId) => void openAgentTrainingTask(datasetId, taskId)}
           onOpenModel={(datasetId, modelId) => void openAgentModel(datasetId, modelId)}

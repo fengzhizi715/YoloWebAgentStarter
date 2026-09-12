@@ -64,7 +64,7 @@ npm --prefix frontend install
 | `YWA_AGENT_MAX_TOOL_ROUNDS` | `8` | 单轮对话最大工具循环次数 |
 | `YWA_AGENT_APPROVAL_TTL_SECONDS` | `3600` | 写操作确认有效期（秒） |
 
-SAM 设置页面会将配置持久化到 `YWA_DATA_DIR/settings.json`；运行日志存储在 `YWA_DATA_DIR/logs/backend.log`，每个日志文件达到 2 MiB 后轮换并保留三个备份。日志页面展示最新内容时会合并这些日志文件。侧栏「助手」可查询数据集/训练/模型，并在人工确认后提交训练、评估或自动标注；确认后本轮结束，不会自动串联下一步。
+SAM 和 Agent LLM 设置页面会将配置持久化到 `YWA_DATA_DIR/settings.json`（API Key 不会出现在读取接口响应中，也不写入 SQLite）；`YWA_AGENT_*` 环境变量提供默认值。运行日志存储在 `YWA_DATA_DIR/logs/backend.log`，每个日志文件达到 2 MiB 后轮换并保留三个备份。日志页面展示最新内容时会合并这些日志文件。侧栏「助手」提供快捷提问、当前数据集上下文、报告卡片与会话重命名，可查询数据集/训练/模型，并在人工确认后提交训练、评估或自动标注；确认后本轮结束，不会自动串联下一步。
 
 不要将数据库、导入目录或模型注册表指向 Enterprise 仓库的工作副本。
 

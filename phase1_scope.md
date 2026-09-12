@@ -103,7 +103,7 @@ Starter 是独立开源引流产品，不依赖 Enterprise，也不承诺包含�
 | 本地单用户 | included | supported | 默认只监听 localhost |
 | 登录 / RBAC / 用户管理 | excluded | included | Starter 无 AuthProvider 和用户表 |
 | 商业 License | excluded | included | Starter 无 offline_license 依赖 |
-| Agent MVP（LLM 助手） | bounded | included | 会话/运行记录、只读工具、人工确认写工具；LLM 配置对齐上游设置页（`settings.json`，不进 SQLite）；无 Workflow |
+| Agent MVP（LLM 助手） | bounded | included | 会话/运行记录、只读工具、人工确认写工具；LLM 配置对齐上游设置页（`settings.json`，不进 SQLite），环境变量作默认；无 Workflow |
 | Workflow / 无人值守自动化 | excluded | included | 无定时、触发器、任务自动串联或无人值守执行 |
 | Runtime logs 管理页 | included | included | 读取 Starter 数据目录中的本地后端日志，支持行数、级别和内容筛选 |
 | SQLite | included | included | Starter 唯一正式数据库 |

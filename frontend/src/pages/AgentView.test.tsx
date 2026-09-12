@@ -140,6 +140,53 @@ describe("AgentView", () => {
     expect(onOpenDataset).toHaveBeenCalledWith("ds_abc");
   });
 
+  it("uses a contextual quick prompt for the active dataset", async () => {
+    const { agentApi } = await import("../api/agent");
+    await act(async () => {
+      root?.render(
+        <AgentView
+          locale="zh"
+          context={{ dataset: { id: "ds_abc", name: "agent-demo" } }}
+          onOpenDataset={vi.fn()}
+          onOpenTrainingTask={vi.fn()}
+          onOpenModel={vi.fn()}
+        />,
+      );
+    });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(container?.textContent).toContain("当前数据集上下文");
+    const quickPrompt = Array.from(container?.querySelectorAll("button") ?? []).find((button) => button.textContent === "数据集质量报告");
+    expect(quickPrompt).toBeTruthy();
+    await act(async () => { quickPrompt?.click(); });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(agentApi.postMessage).toHaveBeenCalledWith("asess_1", expect.stringContaining("ds_abc"));
+  });
+
+  it("renames the current session through the Agent API", async () => {
+    const { agentApi } = await import("../api/agent");
+    await act(async () => {
+      root?.render(
+        <AgentView locale="zh" onOpenDataset={vi.fn()} onOpenTrainingTask={vi.fn()} onOpenModel={vi.fn()} />,
+      );
+    });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const rename = Array.from(container?.querySelectorAll("button") ?? []).find((button) => button.textContent === "重命名");
+    expect(rename).toBeTruthy();
+    await act(async () => { rename?.click(); });
+    const input = container?.querySelector(".agent-title-editor input") as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    if (input) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(input, "重命名后的会话");
+      await act(async () => { input.dispatchEvent(new Event("input", { bubbles: true })); });
+    }
+    const save = Array.from(container?.querySelectorAll("button") ?? []).find((button) => button.textContent === "保存名称");
+    await act(async () => { save?.click(); });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(agentApi.updateSession).toHaveBeenCalledWith("asess_1", "重命名后的会话");
+  });
+
   it("confirms pending approvals via approve API", async () => {
     const { agentApi } = await import("../api/agent");
     const awaitingRun = {

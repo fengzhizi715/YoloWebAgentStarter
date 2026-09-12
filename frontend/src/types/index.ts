@@ -145,7 +145,7 @@ export interface SamSettings {
   model_configured: boolean;
 }
 
-/** Upstream-compatible LLM settings (GET never returns api_key). */
+/** LLM settings persisted in the local data directory; GET never returns api_key. */
 export type LLMAuthScheme = "bearer" | "header" | "raw_authorization";
 
 export interface LLMSettings {
