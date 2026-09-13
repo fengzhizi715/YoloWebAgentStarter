@@ -206,7 +206,7 @@ input:focus, select:focus, textarea:focus { border-color: #6682e5; box-shadow: 0
 .gpu-option.selected { border-color: #bfcef4; background: #f4f7ff; }
 .gpu-option input { min-width: 0; }.gpu-option span { display: grid; gap: 2px; }.gpu-option strong { color: #40506b; font-size: 11px; }.gpu-option small, .gpu-picker > small { color: #8994a8; font-size: 10px; }
 
-.settings-layout, .logs-layout { width: 100%; max-width: 1120px; margin: 0 auto; padding: 34px 36px 54px; }
+.settings-layout, .logs-layout { width: 100%; max-width: 1440px; margin: 0 auto; padding: 34px 36px 54px; }
 .settings-head, .logs-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 26px; border-bottom: 1px solid #e5e9f0; }
 .settings-head h1, .logs-head h1 { margin-top: 6px; font-size: 28px; }.settings-head p, .logs-head p { max-width: 620px; margin-top: 8px; color: #7d8799; font-size: 13px; line-height: 1.6; }
 .settings-page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 26px; border-bottom: 1px solid #e5e9f0; }.settings-page-head h1 { margin-top: 6px; font-size: 28px; }.settings-page-head p { max-width: 650px; margin-top: 8px; color: #7d8799; font-size: 13px; line-height: 1.6; }.settings-page-badge { margin-top: 4px; padding: 5px 9px; border: 1px solid #cfd9f4; border-radius: 999px; color: #3157d5; background: #f1f4ff; font-size: 11px; font-weight: 700; }
@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { border-color: #6682e5; box-shadow: 0
 
 .logs-head .header-actions { display: flex; gap: 8px; }.logs-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 22px 0 14px; }.logs-summary span { display: grid; gap: 5px; padding: 14px; border: 1px solid #e1e6ef; border-radius: 9px; background: #fff; }.logs-summary small { color: #8994a8; font-size: 10px; }.logs-summary strong { color: #3157d5; font-size: 22px; }.logs-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 14px; }.logs-toolbar label { display: grid; gap: 6px; color: #536077; font-size: 11px; font-weight: 650; }.logs-toolbar label:first-child { flex: 1 1 260px; }.logs-toolbar input { width: 100%; }.logs-panel { margin-top: 14px; padding: 18px; }.logs-panel > header { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; padding-bottom: 13px; border-bottom: 1px solid #edf0f4; }.logs-panel h2 { font-size: 17px; }.logs-panel header p { margin-top: 4px; color: #8994a8; font-size: 10px; }.logs-panel code { max-width: 55%; overflow: hidden; color: #8994a8; font: 10px ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }.logs-panel pre { max-height: 560px; min-height: 250px; margin: 14px 0 0; overflow: auto; padding: 14px; border-radius: 7px; color: #dbe6ff; background: #172033; font: 11px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }.logs-empty { display: grid; min-height: 250px; place-items: center; color: #8994a8; font-size: 12px; }
 
-.agent-layout { width: 100%; max-width: 1280px; margin: 0 auto; padding: 34px 36px 54px; }
+.agent-layout { width: 100%; max-width: 1440px; margin: 0 auto; padding: 34px 36px 54px; }
 .agent-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 22px; border-bottom: 1px solid #e5e9f0; }
 .agent-head h1 { margin-top: 6px; font-size: 28px; }
 .agent-head p { max-width: 640px; margin-top: 8px; color: #7d8799; font-size: 13px; line-height: 1.6; }
