@@ -329,8 +329,22 @@ def export_dataset(session: Session, storage: Storage, dataset_id: str) -> tuple
     return output.getvalue(), f"{dataset.name.replace(' ', '_') or 'dataset'}.zip"
 
 
-def export_dataset_directory(session: Session, storage: Storage, dataset_id: str, target_dir: Path) -> dict[str, object]:
-    """Materialize a training-ready YOLO directory using persisted image splits."""
+def export_dataset_directory(
+    session: Session,
+    storage: Storage,
+    dataset_id: str,
+    target_dir: Path,
+    *,
+    include_unannotated: bool = False,
+) -> dict[str, object]:
+    """Materialize a training-ready YOLO directory using persisted image splits.
+
+    Unannotated images are skipped by default.  Including them would write empty
+    label files that Ultralytics treats as background; on partially annotated
+    datasets this floods the val split with unlabelled objects and collapses
+    precision/mAP.  Upstream only keeps unannotated images for finalized
+    auto-annotation versions, so training and evaluation stay conservative.
+    """
 
     dataset = get_dataset(session, dataset_id)
     classes = list(
@@ -357,18 +371,26 @@ def export_dataset_directory(session: Session, storage: Storage, dataset_id: str
         annotations_by_image.setdefault(annotation.image_id, []).append(annotation)
     counts = {"train": 0, "val": 0, "test": 0}
     annotated_image_counts = {"train": 0, "val": 0, "test": 0}
+    total_image_counts = {"train": 0, "val": 0, "test": 0}
+    skipped_image_counts = {"train": 0, "val": 0, "test": 0}
     label_count = 0
 
     for image in images:
         if image.split not in counts:
             raise ValidationError("invalid_image_split", f"Unsupported image split: {image.split}.")
+        total_image_counts[image.split] += 1
         source = storage.image_path(dataset_id, image.storage_name)
         if not source.is_file():
             raise ValidationError("image_file_missing", f"Managed image file is missing: {image.file_name}.")
         stem = f"{image.id}_{PurePosixPath(image.file_name).stem}"
+        image_annotations = annotations_by_image.get(image.id, [])
+        if not include_unannotated and not image_annotations:
+            skipped_image_counts[image.split] += 1
+            continue
         if dataset.task_type == "classify":
-            annotation = _classification_for_image(annotations_by_image.get(image.id, []))
+            annotation = _classification_for_image(image_annotations)
             if annotation is None:
+                skipped_image_counts[image.split] += 1
                 continue
             class_name = class_names.get(annotation.class_id)
             if class_name is None:
@@ -386,7 +408,7 @@ def export_dataset_directory(session: Session, storage: Storage, dataset_id: str
         label_destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, image_destination)
         lines: list[str] = []
-        for annotation in annotations_by_image.get(image.id, []):
+        for annotation in image_annotations:
             class_index = class_indexes.get(annotation.class_id)
             if class_index is None:
                 raise ValidationError("annotation_class_mismatch", "Annotation class does not belong to this dataset.")
@@ -418,6 +440,8 @@ def export_dataset_directory(session: Session, storage: Storage, dataset_id: str
             "data_yaml": str(target),
             "counts": counts,
             "annotated_image_counts": annotated_image_counts,
+            "total_image_counts": total_image_counts,
+            "skipped_image_counts": skipped_image_counts,
             "label_count": label_count,
         }
 
@@ -440,6 +464,8 @@ def export_dataset_directory(session: Session, storage: Storage, dataset_id: str
         "data_yaml": str(data_yaml),
         "counts": counts,
         "annotated_image_counts": annotated_image_counts,
+        "total_image_counts": total_image_counts,
+        "skipped_image_counts": skipped_image_counts,
         "label_count": label_count,
     }
 

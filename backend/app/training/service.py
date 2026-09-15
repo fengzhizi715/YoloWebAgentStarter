@@ -117,6 +117,16 @@ class TrainingService:
             export = export_dataset_directory(session, self.storage, dataset.id, export_root)
             self._validate_export_training_splits(export, dataset.task_type)
             data_yaml = str(export["data_yaml"])
+            export_stats = {
+                key: export.get(key)
+                for key in (
+                    "counts",
+                    "annotated_image_counts",
+                    "total_image_counts",
+                    "skipped_image_counts",
+                    "label_count",
+                )
+            }
             command = build_training_command(
                 task_type=task_type,
                 model=model_reference,
@@ -159,6 +169,7 @@ class TrainingService:
                 command_preview=command.readable,
                 export_path=str(export["root"]),
                 data_yaml_path=data_yaml,
+                export_stats_json=export_stats,
                 run_dir=str(run_dir),
                 logs_path=str(task_root / "train.log"),
                 summary_path=str(task_root / "training_summary.json"),

@@ -103,6 +103,7 @@ class TrainingSummaryResponse(BaseModel):
     status: TrainingStatus
     training_config: dict
     dataset: dict
+    export_stats: dict = Field(default_factory=dict)
     progress: dict
     metrics: dict
     checkpoints: dict

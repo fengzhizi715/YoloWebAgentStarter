@@ -134,6 +134,16 @@ def prepared_dataset(client, task_type: str = "detect") -> tuple[str, str]:
     return dataset_id, label
 
 
+def upload_unannotated_image(client, dataset_id: str, split: str, name: str) -> dict:
+    response = client.post(
+        f"/api/datasets/{dataset_id}/images/upload",
+        data={"split": split},
+        files={"files": (name, image_bytes(), "image/png")},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["items"][0]
+
+
 def wait_for_terminal(client, task_id: str) -> dict:
     for _ in range(100):
         task = client.get(f"/api/training/tasks/{task_id}").json()
@@ -497,6 +507,99 @@ def test_training_requires_annotated_train_and_val_splits(client, task_type, mod
     assert response.status_code == 422
     assert response.json()["error"]["code"] == error_code
     assert response.json()["error"]["details"] == {"missing_splits": [missing_split]}
+
+
+def test_training_export_excludes_unannotated_images(client, tmp_path, monkeypatch):
+    executable = tmp_path / "fake-yolo"
+    fake_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+    dataset_id, _ = prepared_dataset(client)
+    unannotated_train = upload_unannotated_image(client, dataset_id, "train", "train_unlabelled.png")
+    unannotated_val = upload_unannotated_image(client, dataset_id, "val", "val_unlabelled.png")
+
+    response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "name": "unannotated-export", "model": "yolo11n.pt", "epochs": 1, "batch_size": 1},
+    )
+    assert response.status_code == 201, response.text
+    task = wait_for_terminal(client, response.json()["id"])
+    assert task["status"] == "completed", task
+
+    export_root = Path(task["export_path"])
+    train_images = {path.name for path in (export_root / "images" / "train").iterdir()}
+    val_images = {path.name for path in (export_root / "images" / "val").iterdir()}
+    assert len(train_images) == 1
+    assert len(val_images) == 1
+    assert not any(name.startswith(unannotated_train["id"]) for name in train_images)
+    assert not any(name.startswith(unannotated_val["id"]) for name in val_images)
+    for split in ("train", "val"):
+        labels = list((export_root / "labels" / split).iterdir())
+        assert labels
+        assert all(label.read_text(encoding="utf-8").strip() for label in labels)
+
+
+def test_export_dataset_directory_optionally_includes_unannotated_images(client, tmp_path):
+    from app.dataset.exchange.yolo import export_dataset_directory
+
+    dataset_id, _ = prepared_dataset(client)
+    unannotated = upload_unannotated_image(client, dataset_id, "train", "train_unlabelled.png")
+
+    with client.app.state.database.session_factory() as session:
+        default = export_dataset_directory(session, client.app.state.storage, dataset_id, tmp_path / "default")
+        included = export_dataset_directory(
+            session,
+            client.app.state.storage,
+            dataset_id,
+            tmp_path / "included",
+            include_unannotated=True,
+        )
+
+    assert default["counts"]["train"] == 1
+    assert default["annotated_image_counts"]["train"] == 1
+    assert included["counts"]["train"] == 2
+    assert included["annotated_image_counts"]["train"] == 1
+
+    included_train = {path.name for path in (Path(included["root"]) / "images" / "train").iterdir()}
+    assert any(name.startswith(unannotated["id"]) for name in included_train)
+    empty_label = next(iter((Path(included["root"]) / "labels" / "train").glob(f"{unannotated['id']}_*.txt")))
+    assert empty_label.read_text(encoding="utf-8") == ""
+
+
+def test_training_summary_reports_export_stats_and_small_validation_risk(client, tmp_path, monkeypatch):
+    executable = tmp_path / "fake-yolo"
+    fake_yolo(executable)
+    monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
+    dataset_id, _ = prepared_dataset(client)
+    upload_unannotated_image(client, dataset_id, "train", "train_unlabelled.png")
+    upload_unannotated_image(client, dataset_id, "val", "val_unlabelled.png")
+
+    response = client.post(
+        "/api/training/tasks",
+        json={"dataset_id": dataset_id, "name": "export-stats", "model": "yolo11n.pt", "epochs": 1, "batch_size": 1},
+    )
+    assert response.status_code == 201, response.text
+    task_id = response.json()["id"]
+
+    summary = client.get(f"/api/training/tasks/{task_id}/summary").json()
+    stats = summary["export_stats"]
+    assert stats["counts"] == {"train": 1, "val": 1, "test": 0}
+    assert stats["annotated_image_counts"] == {"train": 1, "val": 1, "test": 0}
+    assert stats["total_image_counts"] == {"train": 2, "val": 2, "test": 0}
+    assert stats["skipped_image_counts"] == {"train": 1, "val": 1, "test": 0}
+    assert stats["label_count"] == 2
+    assert "val_split_too_small" in summary["risks"]
+
+    assert wait_for_terminal(client, task_id)["status"] == "completed"
+
+
+def test_validation_split_small_risk_thresholds():
+    from app.training.observability.summary import _validation_split_too_small
+
+    assert _validation_split_too_small({}) is False
+    assert _validation_split_too_small({"annotated_image_counts": {"train": 0, "val": 0, "test": 0}}) is False
+    assert _validation_split_too_small({"annotated_image_counts": {"train": 96, "val": 4, "test": 0}}) is True
+    assert _validation_split_too_small({"annotated_image_counts": {"train": 192, "val": 8, "test": 0}}) is True
+    assert _validation_split_too_small({"annotated_image_counts": {"train": 88, "val": 12, "test": 0}}) is False
 
 
 def test_running_training_can_be_stopped(client, tmp_path, monkeypatch):

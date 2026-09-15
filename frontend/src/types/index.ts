@@ -289,6 +289,13 @@ export interface TrainingSummary {
   status: TrainingStatus;
   training_config: Record<string, unknown>;
   dataset: Record<string, unknown>;
+  export_stats?: {
+    counts?: Record<string, number>;
+    annotated_image_counts?: Record<string, number>;
+    total_image_counts?: Record<string, number>;
+    skipped_image_counts?: Record<string, number>;
+    label_count?: number;
+  };
   progress: { epoch: number; total_epochs: number; percent: number };
   metrics: Record<string, unknown> & { history?: Array<Record<string, number>> };
   timing: Record<string, number>;

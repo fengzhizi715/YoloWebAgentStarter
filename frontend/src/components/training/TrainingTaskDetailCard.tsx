@@ -87,6 +87,9 @@ export function TrainingTaskDetailCard({ task, summary, logs, busy, onClose, onS
         {history.length > 1 && history.some((point) => typeof point.map50 === "number") && (
           <TrainingMetricChart title="mAP50 趋势" count={history.length} history={history} series={mapSeries} max={1} />
         )}
+        {summary?.export_stats?.counts ? (
+          <p className="hint">数据导出：{formatExportStats(summary.export_stats)}</p>
+        ) : null}
         {summary?.risks.length ? <p className="hint">风险提示：{summary.risks.join("、")}</p> : null}
       </div>
 
@@ -112,6 +115,18 @@ export function TrainingTaskDetailCard({ task, summary, logs, busy, onClose, onS
 
 function Metric({ label, value }: { label: string; value: string }) {
   return <span><small>{label}</small><strong>{value}</strong></span>;
+}
+
+function formatExportStats(stats: NonNullable<TrainingSummary["export_stats"]>): string {
+  const exported = stats.counts ?? {};
+  const annotated = stats.annotated_image_counts ?? {};
+  const skipped = stats.skipped_image_counts ?? {};
+  const splitText = (split: string) => `${split} 导出 ${exported[split] ?? 0}（已标注 ${annotated[split] ?? 0}）`;
+  const parts = [splitText("train"), splitText("val")];
+  const skippedTotal = Object.values(skipped).reduce((sum, value) => sum + value, 0);
+  parts.push(`跳过未标注 ${skippedTotal}`);
+  if (typeof stats.label_count === "number") parts.push(`标签 ${stats.label_count}`);
+  return parts.join(" · ");
 }
 
 function TrainingMetricChart({

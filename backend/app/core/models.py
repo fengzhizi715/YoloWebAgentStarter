@@ -184,6 +184,7 @@ class TrainingTask(Base, TimestampMixin):
     command_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
     export_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     data_yaml_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    export_stats_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     run_dir: Mapped[str | None] = mapped_column(Text, nullable=True)
     logs_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_path: Mapped[str | None] = mapped_column(Text, nullable=True)
