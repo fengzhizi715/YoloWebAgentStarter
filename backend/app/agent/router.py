@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Response
+from fastapi import APIRouter, Body, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.agent.schemas import (
@@ -8,6 +8,7 @@ from app.agent.schemas import (
     AgentApproveRequest,
     AgentMessageCreateRequest,
     AgentProviderStatusResponse,
+    AgentProfileResponse,
     AgentRunResponse,
     AgentSessionCreateRequest,
     AgentSessionDetailResponse,
@@ -19,6 +20,11 @@ from app.api.dependencies import get_agent_service, get_session
 
 
 router = APIRouter(prefix="/agent", tags=["agent"])
+
+
+@router.get("/profiles", response_model=list[AgentProfileResponse])
+def list_agent_profiles(service: AgentService = Depends(get_agent_service)) -> list[AgentProfileResponse]:
+    return service.list_profiles()
 
 
 @router.get("/status", response_model=AgentProviderStatusResponse)
@@ -76,10 +82,29 @@ def delete_agent_session(
 def post_agent_message(
     session_id: str,
     payload: AgentMessageCreateRequest,
+    request: Request,
+    response: Response,
+    wait_for_completion: bool = Query(default=False, description="Wait for completion for synchronous API clients."),
     session: Session = Depends(get_session),
     service: AgentService = Depends(get_agent_service),
 ) -> AgentRunResponse:
-    return service.post_message(session, session_id, payload)
+    run = service.post_message(session, session_id, payload, execute=wait_for_completion)
+    if not wait_for_completion:
+        request.app.state.agent_executor.submit(service, run.id)
+        response.status_code = 202
+    return run
+
+
+@router.post("/runs/{run_id}/retry", response_model=AgentRunResponse, status_code=202)
+def retry_agent_run(
+    run_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+    service: AgentService = Depends(get_agent_service),
+) -> AgentRunResponse:
+    run = service.retry_run(session, run_id, execute=False)
+    request.app.state.agent_executor.submit(service, run.id)
+    return run
 
 
 @router.get("/runs/{run_id}", response_model=AgentRunResponse)

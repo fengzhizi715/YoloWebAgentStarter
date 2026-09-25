@@ -114,7 +114,7 @@ def test_agent_run_never_persists_provider_error_detail(tmp_path, monkeypatch):
     monkeypatch.setattr(OpenAICompatibleProvider, "complete", fail)
     with TestClient(create_app(settings)) as client:
         session_id = client.post("/api/agent/sessions", json={}).json()["id"]
-        response = client.post(f"/api/agent/sessions/{session_id}/messages", json={"content": "hello"})
+        response = client.post(f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true", json={"content": "hello"})
         assert response.status_code == 200, response.text
         body = response.json()
         assert body["status"] == "failed"

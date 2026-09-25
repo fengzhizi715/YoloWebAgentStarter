@@ -362,6 +362,37 @@ class ModelService:
             suggestions.append("Review validation metrics and quick-test results before replacing the baseline.")
         return {"dataset_id": baseline.dataset_id, "baseline": {"id": baseline.id, "name": baseline.name, "metrics": baseline.metrics_json}, "candidate": {"id": candidate.id, "name": candidate.name, "metrics": candidate.metrics_json}, "deltas": deltas, "suggestions": suggestions}
 
+    def assess_comparability(self, session: Session, baseline_id: str, candidate_id: str) -> dict:
+        """Do not mistake training-card deltas for controlled evaluation evidence."""
+        comparison = self.compare(session, baseline_id, candidate_id)
+        records = [next((row for row in self.list_evaluations(session, model_id)
+                         if row.status == "completed"), None) for model_id in (baseline_id, candidate_id)]
+        issues = []
+        status = "unknown"
+        evidence = []
+        for model_id, record in zip((baseline_id, candidate_id), records):
+            evidence.append({"model_id": model_id, "evaluation_id": record.id if record else None,
+                             "split": record.split if record else None,
+                             "confidence": record.confidence if record else None,
+                             "iou": record.iou if record else None,
+                             "metrics": (record.result_json or {}).get("metrics", {}) if record else {}})
+        if any(record is None for record in records):
+            issues.append("至少一个模型没有成功评估，不能判断效果优劣。")
+        else:
+            left, right = records
+            if (left.dataset_id, left.split, left.confidence, left.iou) != (right.dataset_id, right.split, right.confidence, right.iou):
+                status = "incomparable"
+                issues.append("最近成功评估的数据集、split 或评估阈值不一致。")
+            # Existing records do not fingerprint evaluated images/annotations.
+            # Even equal dataset IDs and split names cannot prove equal snapshots.
+            issues.append("现有评估记录未保存可核验的数据快照指纹，同名 split 不代表相同样本与标注。")
+        return {"dataset_id": comparison["dataset_id"], "baseline": comparison["baseline"],
+                "candidate": comparison["candidate"], "status": status, "comparable": False,
+                "summary": "可比性未证实，不据此排名或推荐替换模型。", "evidence": evidence,
+                "issues": issues, "deltas": {},
+                "next_steps": ["人工确认相同冻结样本、标注、split 与评估参数后，再解释指标差异。"],
+                "suggestions": ["模型卡指标仅作历史参考，不作为本次公平对比结论。"]}
+
     @staticmethod
     def _obb_from_points(points: list[list[float]]) -> dict:
         import math

@@ -8,13 +8,21 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace
 from typing import Any
 
 import httpx
 
 from app.agent.llm_auth import build_llm_request_headers
 from app.agent.provider import ProviderMessage, ProviderRequest, ProviderResponse, ProviderToolCall
-from app.agent.providers.provider_planner import planner_fallback_response
+from app.agent.providers.provider_planner import (
+    available_tool_names,
+    current_tool_results,
+    has_current_tool_results,
+    last_user_message,
+    next_evaluation_call,
+    planner_fallback_response,
+)
 from app.agent.redaction import redact_text
 from app.core.errors import ValidationError
 
@@ -50,22 +58,34 @@ class OpenAICompatibleProvider:
         self.last_error: str | None = None
 
     def complete(self, request: ProviderRequest) -> ProviderResponse:
+        self.last_source = "llm"
+        self.last_error = None
         try:
             response = self._complete_llm(request)
         except ValidationError as exc:
             safe_error = redact_text(exc.message, secrets=[self.api_key] if self.api_key else [])[:500]
             logger.warning("OpenAI-compatible provider failed, using planner fallback: %s", safe_error)
-            self.last_source = "fallback"
             self.last_error = safe_error
             fallback = planner_fallback_response(request, reason=safe_error)
             if fallback is not None:
-                return fallback
+                self.last_source = "fallback"
+                return replace(fallback, source="fallback", fallback_reason=exc.error_code)
             raise
 
         self.last_source = "llm"
         self.last_error = None
-        if response.tool_calls or not request.tools:
-            return response
+        if not response.tool_calls:
+            follow_up = next_evaluation_call(
+                last_user_message(request.messages), current_tool_results(request.messages),
+                available_tool_names(request.tools), prefix="llm",
+            )
+            if follow_up:
+                self.last_source = "fallback"
+                self.last_error = "LLM omitted the required evaluation lookup."
+                return ProviderResponse(content="", tool_calls=[follow_up], source="fallback",
+                                        fallback_reason="missing_evaluation_lookup")
+        if response.tool_calls or not request.tools or has_current_tool_results(request.messages):
+            return replace(response, source="llm", fallback_reason=None)
 
         fallback = planner_fallback_response(
             request,
@@ -74,8 +94,8 @@ class OpenAICompatibleProvider:
         if fallback is not None and fallback.tool_calls:
             self.last_source = "fallback"
             self.last_error = "LLM returned no tool calls."
-            return fallback
-        return response
+            return replace(fallback, source="fallback", fallback_reason="no_tool_calls")
+        return replace(response, source="llm", fallback_reason=None)
 
     def _complete_llm(self, request: ProviderRequest) -> ProviderResponse:
         model = (request.model or self.model).strip() or self.model
@@ -94,7 +114,10 @@ class OpenAICompatibleProvider:
             with httpx.Client(timeout=httpx.Timeout(self.timeout_seconds), trust_env=False) as client:
                 response = client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
-                data = response.json()
+                try:
+                    data = response.json()
+                except ValueError as exc:
+                    raise ValidationError("agent_provider_bad_response", "LLM response is not valid JSON.") from exc
         except httpx.HTTPStatusError as exc:
             raise ValidationError("agent_provider_http_error", f"LLM request failed: HTTP {exc.response.status_code}") from exc
         except httpx.HTTPError as exc:
@@ -102,6 +125,8 @@ class OpenAICompatibleProvider:
 
         try:
             message = data["choices"][0]["message"]
+            if not isinstance(message, dict):
+                raise TypeError("message must be an object")
         except (KeyError, IndexError, TypeError) as exc:
             raise ValidationError("agent_provider_bad_response", "LLM response missing choices[0].message") from exc
 
@@ -139,6 +164,22 @@ def _parse_arguments(raw: Any) -> dict[str, Any]:
 
 
 def _to_openai_message(item: ProviderMessage) -> dict[str, Any]:
+    if item.role == "assistant" and item.tool_calls:
+        return {
+            "role": "assistant",
+            "content": item.content or None,
+            "tool_calls": [
+                {
+                    "id": call.call_id,
+                    "type": "function",
+                    "function": {
+                        "name": call.name,
+                        "arguments": json.dumps(call.arguments, ensure_ascii=False),
+                    },
+                }
+                for call in item.tool_calls
+            ],
+        }
     if item.role == "tool":
         message: dict[str, Any] = {"role": "tool", "content": item.content}
         if item.tool_call_id:

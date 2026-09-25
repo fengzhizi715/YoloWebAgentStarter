@@ -412,6 +412,24 @@ export interface AgentApproval {
   updated_at: string;
 }
 
+export interface AgentContext {
+  dataset_id?: string | null;
+  training_task_id?: string | null;
+  model_id?: string | null;
+}
+
+export type AgentProfileId = "global" | "dataset" | "training" | "model";
+
+export interface AgentInferenceStep {
+  round: number;
+  source: "llm" | "mock" | "fallback" | "unknown";
+  provider: string;
+  model: string;
+  duration_ms: number;
+  outcome: "completed" | "failed" | "discarded";
+  reason: string | null;
+}
+
 export interface AgentRun {
   id: string;
   session_id: string;
@@ -420,6 +438,12 @@ export interface AgentRun {
   model: string;
   error_message: string | null;
   stop_requested: boolean;
+  read_only: boolean;
+  context: AgentContext;
+  profile_id?: AgentProfileId;
+  profile_version?: number;
+  actual_source?: "llm" | "mock" | "fallback" | "mixed" | "unknown";
+  inference_steps?: AgentInferenceStep[];
   created_at: string;
   updated_at: string;
   started_at: string | null;
@@ -432,6 +456,9 @@ export interface AgentRun {
 export interface AgentSession {
   id: string;
   title: string;
+  profile_id?: AgentProfileId;
+  profile_version?: number;
+  context?: AgentContext;
   created_at: string;
   updated_at: string;
   message_count: number;

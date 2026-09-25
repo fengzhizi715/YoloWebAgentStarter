@@ -314,6 +314,9 @@ class AgentSession(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[str] = mapped_column(String(255), default="New chat", nullable=False)
+    profile_id: Mapped[str] = mapped_column(String(32), default="global", nullable=False)
+    profile_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    context_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     messages: Mapped[list["AgentMessage"]] = relationship(back_populates="session", cascade="all, delete-orphan")
     runs: Mapped[list["AgentRun"]] = relationship(back_populates="session", cascade="all, delete-orphan")
@@ -335,6 +338,11 @@ class AgentRun(Base, TimestampMixin):
     model: Mapped[str] = mapped_column(String(255), nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     stop_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    read_only: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    context_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    inference_steps_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    profile_id: Mapped[str] = mapped_column(String(32), default="global", nullable=False)
+    profile_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 

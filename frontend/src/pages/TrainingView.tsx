@@ -26,13 +26,14 @@ interface Props {
   dataset: Dataset;
   onDatasetChange: (dataset: Dataset) => void;
   onOpenModels?: () => void;
+  onAskAgent?: (task: TrainingTask) => void;
   focusTaskId?: string;
   onFocusTaskConsumed?: () => void;
 }
 
 const DRAFT_KEY = "ywa.training.draft";
 
-export function TrainingView({ datasets, dataset, onDatasetChange, onOpenModels, focusTaskId, onFocusTaskConsumed }: Props) {
+export function TrainingView({ datasets, dataset, onDatasetChange, onOpenModels, onAskAgent, focusTaskId, onFocusTaskConsumed }: Props) {
   const [tasks, setTasks] = useState<TrainingTask[]>([]);
   const [detailTaskId, setDetailTaskId] = useState<string>();
   const [logs, setLogs] = useState<TrainingLog>();
@@ -379,6 +380,8 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onOpenModels,
           />
 
           {detailTask && (
+            <>
+            {onAskAgent ? <button type="button" className="button" onClick={() => onAskAgent(detailTask)}>询问智能体：此训练任务</button> : null}
             <TrainingTaskDetailCard
               task={detailTask}
               summary={summary?.task_id === detailTask.id ? summary : undefined}
@@ -388,6 +391,7 @@ export function TrainingView({ datasets, dataset, onDatasetChange, onOpenModels,
               onStop={() => void stop(detailTask.id)}
               onResume={() => void resume(detailTask)}
             />
+            </>
           )}
         </div>
 

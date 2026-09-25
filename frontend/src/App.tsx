@@ -7,7 +7,7 @@ import { TrainingView } from "./pages/TrainingView";
 import { ModelsView } from "./pages/ModelsView";
 import { SettingsView } from "./pages/SettingsView";
 import { LogsView } from "./pages/LogsView";
-import { AgentView } from "./pages/AgentView";
+import { AgentView, type AgentPageContext } from "./pages/AgentView";
 import { AutoAnnotationModal } from "./components/AutoAnnotationModal";
 import { ImportCenterModal } from "./components/ImportCenterModal";
 import { readLocale, saveLocale, type AppLocale } from "./locale";
@@ -34,6 +34,7 @@ export default function App() {
   const [annotationDirty, setAnnotationDirty] = useState(false);
   const [focusTrainingTaskId, setFocusTrainingTaskId] = useState<string>();
   const [focusModelId, setFocusModelId] = useState<string>();
+  const [agentFocus, setAgentFocus] = useState<AgentPageContext>({});
   const { requestLeave, dialog: leaveDialog } = useLeaveConfirm(view === "annotation" && annotationDirty);
 
   const refreshDatasets = async () => {
@@ -149,6 +150,7 @@ export default function App() {
     const proceed = () => {
       setNotice("");
       setError("");
+      if (section === "agent") setAgentFocus({});
       if ((section === "training" || section === "models") && !selected && datasets[0]) {
         void loadDataset(datasets[0], section);
         return;
@@ -277,6 +279,7 @@ export default function App() {
           dataset={displayedDataset}
           onDatasetChange={(dataset) => void loadDataset(dataset, "training")}
           onOpenModels={() => setView("models")}
+          onAskAgent={(task) => { setAgentFocus({ dataset: { id: task.dataset_id, name: datasets.find((d) => d.id === task.dataset_id)?.name ?? task.dataset_id }, trainingTask: { id: task.id, name: task.name } }); setView("agent"); }}
           focusTaskId={focusTrainingTaskId}
           onFocusTaskConsumed={() => setFocusTrainingTaskId(undefined)}
         />
@@ -285,6 +288,7 @@ export default function App() {
           dataset={displayedDataset}
           focusModelId={focusModelId}
           onFocusModelConsumed={() => setFocusModelId(undefined)}
+          onAskAgent={(model) => { setAgentFocus({ ...(model.dataset_id ? { dataset: { id: model.dataset_id, name: datasets.find((d) => d.id === model.dataset_id)?.name ?? model.dataset_id } } : {}), model: { id: model.id, name: model.name } }); setView("agent"); }}
         />
       ) : view === "settings-llm" || view === "settings-sam" || view === "settings-language" ? (
         <SettingsView
@@ -303,7 +307,7 @@ export default function App() {
       ) : view === "agent" ? (
         <AgentView
           locale={locale}
-          context={selected ? { dataset: { id: selected.id, name: selected.name } } : undefined}
+          context={agentFocus}
           onOpenDataset={(datasetId) => void openAgentDataset(datasetId)}
           onOpenTrainingTask={(datasetId, taskId) => void openAgentTrainingTask(datasetId, taskId)}
           onOpenModel={(datasetId, modelId) => void openAgentModel(datasetId, modelId)}
@@ -316,6 +320,8 @@ export default function App() {
           onImport={(file, name, taskType, format) => run(async () => { const result = format === "coco" ? await api.importCoco(file, name, taskType) : await api.importYolo(file, name, taskType); await refreshDatasets(); await loadDataset(result.dataset); setNotice(`已导入 ${result.imported_images} 张图片和 ${result.imported_annotations} 个标注`); })}
           onValidate={(dataset) => runResult(() => api.validateDataset(dataset.id))}
           onQuality={(dataset) => runResult(() => api.qualityReport(dataset.id))}
+          onAskAgent={(dataset) => { setAgentFocus({ dataset: { id: dataset.id, name: dataset.name } }); setView("agent"); }}
+          agentLabel={locale === "zh" ? "询问助手" : "Ask assistant"}
           onAutoAnnotationComplete={() => void refreshDatasets()}
           onVideoImportComplete={(task) => run(async () => {
             await refreshDatasets();
@@ -361,6 +367,8 @@ export function DatasetHome(props: {
   onImport: (file: File, name: string, type: TaskType, format: "yolo" | "coco") => void;
   onValidate: (dataset: Dataset) => Promise<ValidationReport | undefined>;
   onQuality: (dataset: Dataset) => Promise<DatasetQualityReport | undefined>;
+  onAskAgent?: (dataset: Dataset) => void;
+  agentLabel?: string;
   onAutoAnnotationComplete?: () => void;
   onVideoImportComplete?: (task: import("./types").VideoImportTask) => Promise<void> | void;
   onContinueAnnotation: (dataset: Dataset) => void;
@@ -452,6 +460,7 @@ export function DatasetHome(props: {
           <div className="progress-track"><i style={{ width: `${dataset.image_count ? dataset.annotated_image_count / dataset.image_count * 100 : 0}%` }} /></div>
           <button className="button primary dataset-primary-action" disabled={props.busy || !dataset.image_count} onClick={() => props.onContinueAnnotation(dataset)}>继续标注</button>
           <div className="dataset-card-actions">
+            {props.onAskAgent ? <button className="button" disabled={props.busy} onClick={() => props.onAskAgent?.(dataset)}>{props.agentLabel ?? "询问助手"}</button> : null}
             <button className="button" disabled={props.busy} onClick={() => props.onTrain(dataset)}>训练</button>
             <button className="button dataset-auto-annotation-action" disabled={props.busy || !dataset.image_count} onClick={() => setAutoAnnotationTarget(dataset)}>自动标注</button>
             <button className="button" disabled={props.busy || !dataset.image_count} onClick={() => openExport(dataset)}>导出数据集</button>

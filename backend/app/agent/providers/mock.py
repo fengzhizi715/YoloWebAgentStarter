@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any
 
 from app.agent.planner import RuleBasedPlanner
 from app.agent.provider import ProviderMessage, ProviderRequest, ProviderResponse, ProviderToolCall
+from app.agent.providers.provider_planner import current_tool_results, next_evaluation_call, planner_message
 from app.agent.providers.openai_compatible import DEFAULT_OPENAI_BASE, OpenAICompatibleProvider
 from app.agent.reply_renderer import AgentReplyRenderer
-from app.agent.report import format_tool_report
 from app.core.config import Settings
 from app.core.errors import ValidationError
 from app.settings.schemas import LLMSettingsInternal
@@ -24,17 +25,26 @@ class MockAgentProvider:
     name = "mock"
 
     def complete(self, request: ProviderRequest) -> ProviderResponse:
-        tool_payloads = _extract_tool_payloads(request.messages)
-        if tool_payloads:
-            return ProviderResponse(content=format_tool_report(tool_payloads), tool_calls=[])
+        return replace(self._complete(request), source="mock")
 
+    def _complete(self, request: ProviderRequest) -> ProviderResponse:
+        tool_payloads = current_tool_results(request.messages)
         last_user = next((item.content for item in reversed(request.messages) if item.role == "user"), "")
         available = {
             item.get("function", {}).get("name")
             for item in request.tools
             if isinstance(item, dict) and item.get("function", {}).get("name")
         }
-        structured = _planner.structured_plan(last_user, available=available)
+        if tool_payloads:
+            follow_up = next_evaluation_call(last_user, tool_payloads, available, prefix="mock")
+            if follow_up:
+                return ProviderResponse(content="", tool_calls=[follow_up])
+            return ProviderResponse(
+                content=_renderer.format_tool_report(tool_payloads, question=last_user),
+                tool_calls=[],
+            )
+
+        structured = _planner.structured_plan(planner_message(request), available=available)
         planned = [
             ProviderToolCall(name=step.tool_name, arguments=step.arguments, call_id=f"mock_{step.tool_name}")
             for step in structured.steps

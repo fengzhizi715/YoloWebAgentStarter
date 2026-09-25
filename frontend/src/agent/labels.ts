@@ -27,6 +27,20 @@ const APPROVAL_STATUS: Record<string, { zh: string; en: string }> = {
 };
 
 const TOOL_NAMES: Record<string, { zh: string; en: string }> = {
+  dataset_readiness: { zh: "训练准备报告", en: "Training readiness" },
+  training_diagnose_failure: { zh: "训练失败诊断", en: "Training failure diagnosis" },
+  model_comparability: { zh: "模型可比性分析", en: "Model comparability" },
+  dataset_summary: { zh: "数据集概览", en: "Dataset summary" },
+  dataset_validate: { zh: "校验数据集", en: "Validate dataset" },
+  training_list: { zh: "训练任务列表", en: "Training tasks" },
+  training_status: { zh: "训练状态", en: "Training status" },
+  training_latest_result: { zh: "训练摘要", en: "Training summary" },
+  model_list: { zh: "模型列表", en: "Models" },
+  model_get: { zh: "模型详情", en: "Model details" },
+  model_compare: { zh: "模型对比", en: "Compare models" },
+  evaluation_list: { zh: "评估列表", en: "Evaluations" },
+  evaluation_summary: { zh: "评估摘要", en: "Evaluation summary" },
+  evaluation_error_summary: { zh: "评估错误摘要", en: "Evaluation errors" },
   global_summary: { zh: "全局概览", en: "Global summary" },
   list_datasets: { zh: "数据集列表", en: "List datasets" },
   get_dataset: { zh: "数据集详情", en: "Get dataset" },
@@ -54,6 +68,12 @@ const FACT_KEYS: Record<string, { zh: string; en: string }> = {
   class_count: { zh: "类别数", en: "Classes" },
   status: { zh: "状态", en: "Status" },
   coverage: { zh: "覆盖率", en: "Coverage" },
+  annotation_count: { zh: "标注数", en: "Annotations" },
+  error_count: { zh: "错误数", en: "Errors" },
+  warning_count: { zh: "警告数", en: "Warnings" },
+  issue_count: { zh: "问题数", en: "Issues" },
+  map50: { zh: "mAP50", en: "mAP50" },
+  split: { zh: "数据划分", en: "Split" },
 };
 
 function pick(map: Record<string, { zh: string; en: string }>, key: string, locale: AppLocale): string {
@@ -96,6 +116,11 @@ export function reportTitle(name: string, locale: AppLocale): string {
     dataset_quality_report: { zh: "质量报告", en: "Quality report" },
     dataset_validate: { zh: "校验结果", en: "Validation result" },
     validate_dataset: { zh: "校验结果", en: "Validation result" },
+    model_latest_for_dataset: { zh: "最新模型", en: "Latest model" },
+    model_get: { zh: "模型详情", en: "Model details" },
+    get_model: { zh: "模型详情", en: "Model details" },
+    training_latest_result: { zh: "训练摘要", en: "Training summary" },
+    training_summary: { zh: "训练摘要", en: "Training summary" },
   };
   const entry = titles[name];
   if (entry) return entry[locale];

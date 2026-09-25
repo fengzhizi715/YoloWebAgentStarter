@@ -67,7 +67,7 @@ def test_agent_lists_datasets_via_read_tool(client):
     dataset_id = _seed_dataset(client)
     session_id = client.post("/api/agent/sessions", json={"title": "tools"}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": "列出有哪些数据集"},
     )
     assert run.status_code == 200, run.text
@@ -89,7 +89,7 @@ def test_agent_dataset_quality_and_validate_tools(client):
     dataset_id = _seed_dataset(client)
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"请给出 {dataset_id} 的质量报告并校验"},
     )
     assert run.status_code == 200, run.text
@@ -133,7 +133,7 @@ def test_agent_model_tools_omit_filesystem_paths(client):
 
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"查看模型 model_train_demo_best 详情"},
     )
     assert run.status_code == 200, run.text
@@ -163,7 +163,7 @@ def test_agent_denies_unknown_tools(client, monkeypatch):
         )
 
     monkeypatch.setattr(MockAgentProvider, "complete", force_unknown)
-    run = client.post(f"/api/agent/sessions/{session_id}/messages", json={"content": "hack"})
+    run = client.post(f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true", json={"content": "hack"})
     assert run.status_code == 200, run.text
     body = run.json()
     assert body["status"] == "completed"

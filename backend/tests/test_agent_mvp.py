@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.agent.providers.mock import MockAgentProvider
+from app.agent.provider import ProviderResponse, ProviderToolCall
 from app.agent.service import AgentService
 from app.core.config import Settings
 from app.core.models import AgentApproval, AgentRun
@@ -33,7 +34,7 @@ def test_agent_session_message_run_persists_with_mock_provider(client):
     session_id = created.json()["id"]
     assert created.json()["title"] == "Dataset questions"
 
-    run = client.post(f"/api/agent/sessions/{session_id}/messages", json={"content": "hello agent"})
+    run = client.post(f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true", json={"content": "hello agent"})
     assert run.status_code == 200, run.text
     body = run.json()
     assert body["status"] == "completed"
@@ -57,6 +58,57 @@ def test_agent_session_message_run_persists_with_mock_provider(client):
     fetched = client.get(f"/api/agent/runs/{body['id']}")
     assert fetched.status_code == 200
     assert fetched.json()["status"] == "completed"
+
+
+def test_agent_multi_turn_uses_current_question_and_valid_tool_protocol(client, monkeypatch):
+    observed = []
+
+    def complete(_self, request):
+        observed.append(request.messages)
+        return ProviderResponse(content="first answer")
+
+    monkeypatch.setattr(MockAgentProvider, "complete", complete)
+    session_id = client.post("/api/agent/sessions", json={}).json()["id"]
+    first = client.post(f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true", json={"content": "first"})
+    assert first.json()["status"] == "completed"
+    # Use the real read tool result in the second turn; the callback detects it by role.
+    def second_complete(_self, request):
+        observed.append(request.messages)
+        latest_user = next(item.content for item in reversed(request.messages) if item.role == "user")
+        if request.messages[-1].role == "tool":
+            assert request.messages[-2].role == "assistant"
+            assert request.messages[-2].tool_calls[0].call_id == request.messages[-1].tool_call_id
+            return ProviderResponse(content=f"answered {latest_user}")
+        return ProviderResponse(content="", tool_calls=[ProviderToolCall(name="global_summary", arguments={}, call_id="call_new")])
+
+    monkeypatch.setattr(MockAgentProvider, "complete", second_complete)
+    second = client.post(f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true", json={"content": "second"})
+    assert second.json()["status"] == "completed", second.text
+    assert second.json()["messages"][-1]["content"] == "answered second"
+    assert len(second.json()["tool_calls"]) == 1
+    assert observed[-1][-1].role == "tool"
+
+
+def test_read_only_run_rejects_provider_requested_write(client, monkeypatch):
+    observed_tools = []
+
+    def malicious_complete(_self, request):
+        observed_tools.append([item["function"]["name"] for item in request.tools])
+        if request.messages[-1].role == "tool":
+            return ProviderResponse(content="Write was denied")
+        return ProviderResponse(content="", tool_calls=[ProviderToolCall(
+            name="create_training_task", arguments={"dataset_id": "ds_abc"}, call_id="call_write",
+        )])
+
+    monkeypatch.setattr(MockAgentProvider, "complete", malicious_complete)
+    session_id = client.post("/api/agent/sessions", json={}).json()["id"]
+    response = client.post(f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true", json={
+        "content": "Read-only question", "read_only": True,
+    })
+    assert response.json()["status"] == "completed", response.text
+    assert all("create_training_task" not in names for names in observed_tools)
+    assert response.json()["tool_calls"][0]["result_json"]["error"] == "read_only_run"
+    assert response.json()["approvals"] == []
 
 
 def test_agent_rejects_second_message_while_run_awaiting_approval(tmp_path, monkeypatch):
@@ -89,7 +141,7 @@ def test_agent_rejects_second_message_while_run_awaiting_approval(tmp_path, monk
             )
             db.commit()
 
-        blocked = client.post(f"/api/agent/sessions/{session_id}/messages", json={"content": "next"})
+        blocked = client.post(f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true", json={"content": "next"})
         assert blocked.status_code == 409
         assert blocked.json()["error"]["code"] == "agent_run_in_progress"
 
@@ -204,7 +256,9 @@ def test_agent_approval_allows_exactly_one_concurrent_executor(client, monkeypat
         db.commit()
         approval_id = approval.id
 
-    service = AgentService(client.app.state.database.session_factory, client.app.state.settings)
+    from app.agent.read_tools import build_default_registry
+    service = AgentService(client.app.state.database.session_factory, client.app.state.settings,
+                           registry=build_default_registry(client.app.state.storage))
     executing = Event()
     release = Event()
     calls = {"count": 0}
@@ -256,7 +310,7 @@ def test_agent_api_key_stays_out_of_sqlite(tmp_path, monkeypatch):
         status = client.get("/api/agent/status").json()
         assert status["api_key_configured"] is True
         session_id = client.post("/api/agent/sessions", json={}).json()["id"]
-        client.post(f"/api/agent/sessions/{session_id}/messages", json={"content": "hello"})
+        client.post(f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true", json={"content": "hello"})
         db_bytes = Path(str(settings.database_url).removeprefix("sqlite:///")).read_bytes()
         assert b"sk-test-secret" not in db_bytes
 
@@ -271,7 +325,10 @@ def test_agent_session_survives_app_restart(tmp_path):
     )
     with TestClient(create_app(settings)) as client:
         session_id = client.post("/api/agent/sessions", json={"title": "persist-me"}).json()["id"]
-        run = client.post(f"/api/agent/sessions/{session_id}/messages", json={"content": "hello agent"}).json()
+        dataset_id = client.post("/api/datasets", json={"name": "context", "task_type": "detect"}).json()["id"]
+        run = client.post(f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true", json={
+            "content": "hello agent", "read_only": True, "context": {"dataset_id": dataset_id}, "profile_id": "dataset",
+        }).json()
         run_id = run["id"]
         assert run["status"] == "completed"
 
@@ -285,6 +342,12 @@ def test_agent_session_survives_app_restart(tmp_path):
         fetched = client.get(f"/api/agent/runs/{run_id}")
         assert fetched.status_code == 200
         assert fetched.json()["status"] == "completed"
+        assert fetched.json()["read_only"] is True
+        assert fetched.json()["context"]["dataset_id"] == dataset_id
+        assert fetched.json()["actual_source"] == "mock"
+        assert fetched.json()["inference_steps"] == run["inference_steps"]
+        assert fetched.json()["profile_id"] == "dataset"
+        assert body["profile_id"] == "dataset" and body["context"]["dataset_id"] == dataset_id
 
 
 def test_awaiting_approval_survives_restart_and_remains_approvable(tmp_path):

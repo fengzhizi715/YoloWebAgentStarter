@@ -56,6 +56,34 @@ def test_rule_planner_training_read_vs_write():
     assert write_plan.needs_confirmation
 
 
+def test_rule_planner_training_advice_and_model_report_are_read_only():
+    planner = RuleBasedPlanner()
+    available = {
+        "dataset_summary", "dataset_quality_report", "dataset_validate", "training_list",
+        "model_get", "evaluation_list", "create_training_task", "create_model_evaluation",
+    }
+    advice = planner.structured_plan(
+        "请基于数据集 ds_abc123 给出训练建议，不要创建任务", available=available,
+    )
+    assert [step.tool_name for step in advice.steps] == [
+        "dataset_summary", "dataset_quality_report", "dataset_validate", "training_list",
+    ]
+    assert not advice.needs_confirmation
+    report = planner.structured_plan("请总结模型 model_abc 的指标和最近评估结果", available=available)
+    assert [step.tool_name for step in report.steps] == ["model_get", "evaluation_list"]
+    assert not report.needs_confirmation
+
+
+def test_reply_renderer_adds_evidence_based_training_advice():
+    report = AgentReplyRenderer().format_tool_report([
+        {"tool_name": "dataset_quality_report", "result": {"summary": {"coverage": 0.5}, "issues": []}},
+        {"tool_name": "dataset_validate", "result": {"summary": {"error_count": 2, "warning_count": 0}}},
+    ], question="请给出训练建议")
+    assert "先修复 2 个校验错误" in report
+    assert "50.0%" in report
+    assert "不会创建任务" in report
+
+
 def test_reply_renderer_confirmation_and_report():
     renderer = AgentReplyRenderer()
     from app.agent.planner import AgentPlanStep, AgentStructuredPlan

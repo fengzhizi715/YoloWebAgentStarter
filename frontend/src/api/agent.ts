@@ -1,5 +1,7 @@
 import type {
   AgentApproval,
+  AgentContext,
+  AgentProfileId,
   AgentProviderStatus,
   AgentRun,
   AgentSession,
@@ -39,13 +41,18 @@ const json = (body: unknown, method = "POST"): RequestInit => ({
 export const agentApi = {
   status: () => request<AgentProviderStatus>("/api/agent/status"),
   listSessions: () => request<AgentSession[]>("/api/agent/sessions"),
-  createSession: (title?: string) => request<AgentSession>("/api/agent/sessions", json(title ? { title } : {})),
+  createSession: (title?: string, binding?: { profileId: AgentProfileId; context: AgentContext }) =>
+    request<AgentSession>("/api/agent/sessions", json({ title, profile_id: binding?.profileId, context: binding?.context })),
   getSession: (sessionId: string) => request<AgentSessionDetail>(`/api/agent/sessions/${sessionId}`),
   updateSession: (sessionId: string, title: string) =>
     request<AgentSession>(`/api/agent/sessions/${sessionId}`, json({ title }, "PATCH")),
   deleteSession: (sessionId: string) => request<void>(`/api/agent/sessions/${sessionId}`, { method: "DELETE" }),
-  postMessage: (sessionId: string, content: string) =>
-    request<AgentRun>(`/api/agent/sessions/${sessionId}/messages`, json({ content })),
+  postMessage: (sessionId: string, content: string, options?: { readOnly?: boolean; context?: AgentContext; profileId?: AgentProfileId; allowContextChange?: boolean }) =>
+    request<AgentRun>(`/api/agent/sessions/${sessionId}/messages`, json({
+      content, read_only: options?.readOnly ?? false, context: options?.context,
+      profile_id: options?.profileId, allow_context_change: options?.allowContextChange ?? false,
+    })),
+  retryRun: (runId: string) => request<AgentRun>(`/api/agent/runs/${runId}/retry`, { method: "POST" }),
   getRun: (runId: string) => request<AgentRun>(`/api/agent/runs/${runId}`),
   cancelRun: (runId: string) => request<AgentRun>(`/api/agent/runs/${runId}/cancel`, { method: "POST" }),
   approveApproval: (approvalId: string, payload?: Record<string, unknown>) =>

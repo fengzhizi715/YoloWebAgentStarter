@@ -245,6 +245,19 @@ input:focus, select:focus, textarea:focus { border-color: #6682e5; box-shadow: 0
 .agent-chat-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid #edf0f4; }
 .agent-chat-head h2 { margin: 0; font-size: 17px; color: #344057; }
 .agent-chat-head p { margin: 4px 0 0; color: #8994a8; font-size: 11px; }
+.agent-inference-summary { padding: 8px 10px; border: 1px solid #e1e6ef; border-radius: 8px; background: #f8fafd; color: #526078; font-size: 12px; overflow-wrap: anywhere; }
+.agent-inference-summary p { margin: 4px 0; }
+.agent-inference-summary summary { cursor: pointer; }
+.agent-inference-summary ul { margin: 6px 0; padding-left: 20px; }
+.agent-inference-summary [role="note"] { color: #8a5700; }
+.agent-binding-panel { padding: 12px; border: 1px solid #e1e6ef; border-radius: 8px; background: #fff; }
+.agent-profile-options, .agent-context-selectors { display: flex; flex-wrap: wrap; gap: 10px; }
+.agent-profile-options { margin-bottom: 10px; }
+.agent-profile-options [aria-pressed="true"] { background: #eaf1ff; border-color: #638cdf; color: #234f9c; }
+.agent-context-selectors label { display: grid; gap: 4px; flex: 1 1 180px; min-width: 0; font-size: 12px; }
+.agent-context-selectors select { width: 100%; min-width: 0; padding: 7px; border: 1px solid #d9e0eb; border-radius: 5px; background: #fff; }
+.agent-binding-warning { padding: 10px; border: 1px solid #dbc182; border-radius: 8px; background: #fff9ea; }
+.agent-binding-warning .button { margin-right: 8px; }
 .agent-title-line, .agent-title-editor { display: flex; align-items: center; gap: 8px; }
 .agent-title-line .button, .agent-title-editor .button { padding: 5px 8px; font-size: 11px; }
 .agent-title-editor input { min-width: 220px; }

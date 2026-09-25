@@ -15,9 +15,10 @@ interface Props {
   dataset: Dataset;
   focusModelId?: string;
   onFocusModelConsumed?: () => void;
+  onAskAgent?: (model: ModelVersion) => void;
 }
 
-export function ModelsView({ dataset, focusModelId, onFocusModelConsumed }: Props) {
+export function ModelsView({ dataset, focusModelId, onFocusModelConsumed, onAskAgent }: Props) {
   const [models, setModels] = useState<ModelVersion[]>([]);
   const [detailId, setDetailId] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -160,6 +161,7 @@ export function ModelsView({ dataset, focusModelId, onFocusModelConsumed }: Prop
       <main className="models-layout models-workspace-page">
         {error && <div className="validation invalid"><strong>模型操作失败</strong><span>{error}</span></div>}
         {notice && <p className="training-workspace-notice">{notice}</p>}
+        {onAskAgent ? <button type="button" className="button" onClick={() => onAskAgent(detailModel)}>询问智能体：此模型</button> : null}
         <ModelDetailView
           dataset={dataset}
           model={detailModel}

@@ -16,6 +16,7 @@ class AgentToolSpec:
     parameters: dict[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}})
     handler: ToolHandler | None = None
     expose_to_provider: bool = True
+    canonical_name: str | None = None
 
 
 class AgentToolRegistry:
@@ -36,7 +37,7 @@ class AgentToolRegistry:
             return items
         return [item for item in items if item.kind == kind]
 
-    def provider_tools(self) -> list[dict[str, Any]]:
+    def provider_tools(self, *, kind: ToolKind | None = None, allowed: frozenset[str] | None = None) -> list[dict[str, Any]]:
         """OpenAI-style tool schemas for providers that support tool calling."""
         return [
             {
@@ -48,7 +49,8 @@ class AgentToolRegistry:
                 },
             }
             for tool in self._tools.values()
-            if tool.expose_to_provider
+            if tool.expose_to_provider and (kind is None or tool.kind == kind)
+            and (allowed is None or (tool.canonical_name or tool.name) in allowed)
         ]
 
 

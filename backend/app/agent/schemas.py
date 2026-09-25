@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from app.agent.profiles import ProfileId
 
 
 AgentRunStatus = Literal["pending", "running", "awaiting_approval", "completed", "failed", "cancelled"]
@@ -12,16 +13,37 @@ AgentToolCallStatus = Literal["pending", "running", "completed", "failed", "awai
 AgentApprovalStatus = Literal["pending", "approved", "executing", "rejected", "expired", "executed"]
 
 
-class AgentSessionCreateRequest(BaseModel):
-    title: str | None = Field(default=None, max_length=255)
-
-
 class AgentSessionUpdateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
 
 
+class AgentContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dataset_id: str | None = Field(default=None, min_length=1, max_length=64)
+    training_task_id: str | None = Field(default=None, min_length=1, max_length=64)
+    model_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
 class AgentMessageCreateRequest(BaseModel):
     content: str = Field(min_length=1, max_length=16_000)
+    read_only: bool = False
+    context: AgentContext | None = None
+    profile_id: ProfileId | None = None
+    allow_context_change: bool = False
+
+
+class AgentSessionCreateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+    context: AgentContext = Field(default_factory=AgentContext)
+    profile_id: ProfileId | None = None
+
+
+class AgentProfileResponse(BaseModel):
+    id: ProfileId
+    version: int
+    title: str
+    title_en: str
 
 
 class AgentMessageResponse(BaseModel):
@@ -70,6 +92,16 @@ class AgentApprovalResponse(BaseModel):
     updated_at: datetime
 
 
+class AgentInferenceStep(BaseModel):
+    round: int
+    source: Literal["llm", "mock", "fallback", "unknown"]
+    provider: str
+    model: str
+    duration_ms: int
+    outcome: Literal["completed", "failed", "discarded"]
+    reason: str | None = None
+
+
 class AgentRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -80,6 +112,12 @@ class AgentRunResponse(BaseModel):
     model: str
     error_message: str | None
     stop_requested: bool
+    read_only: bool
+    context: AgentContext
+    profile_id: ProfileId = "global"
+    profile_version: int = 1
+    actual_source: Literal["llm", "mock", "fallback", "mixed", "unknown"] = "unknown"
+    inference_steps: list[AgentInferenceStep] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     started_at: datetime | None
@@ -94,6 +132,9 @@ class AgentSessionResponse(BaseModel):
 
     id: str
     title: str
+    profile_id: ProfileId = "global"
+    profile_version: int = 1
+    context: AgentContext = Field(default_factory=AgentContext)
     created_at: datetime
     updated_at: datetime
     message_count: int = 0

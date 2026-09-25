@@ -29,6 +29,9 @@ _PRIMARY_ALIASES: dict[str, tuple[str, ...]] = {
     "evaluation_list": ("list_model_evaluations",),
     "evaluation_summary": ("get_model_evaluation",),
     "evaluation_error_summary": (),
+    "dataset_readiness": (),
+    "training_diagnose_failure": (),
+    "model_comparability": (),
     "create_training_task": (),
     "create_model_evaluation": (),
     "create_auto_annotation_task": (),
@@ -82,7 +85,10 @@ class RuleBasedPlanner:
         )
         wants_write_auto = any(
             token in text
-            for token in ("自动标注", "auto-annotation", "auto annotation", "创建自动标注", "start auto")
+            for token in ("创建自动标注", "开始自动标注", "提交自动标注", "start auto", "create auto")
+        ) or (
+            bool(re.search(r"用\s*model_[\w]+\s*对\s*ds_[\w]+\s*自动标注", text))
+            and not any(token in text for token in ("是否", "能否", "可行", "怎么", "如何", "?", "？"))
         )
 
         if wants_write_auto and dataset_ids and model_ids:
@@ -186,13 +192,35 @@ class RuleBasedPlanner:
         wants_dataset = any(token in text for token in ("dataset", "数据集", "概览", "overview"))
         wants_errors = any(token in text for token in ("error", "错误样本", "误检", "漏检"))
 
+        if train_ids and any(token in text for token in ("失败", "诊断", "why", "failure", "failed", "diagnos")):
+            step = self._step("training_diagnose_failure", {"task_id": train_ids[0]}, allow)
+            if step:
+                return self._single(step)
+
+        if dataset_ids and any(token in text for token in ("训练准备", "训练建议", "能否训练", "readiness", "training advice")):
+            step = self._step("dataset_readiness", {"dataset_id": dataset_ids[0]}, allow)
+            if step:
+                return self._single(step)
+
+        if dataset_ids and any(token in text for token in ("训练建议", "training advice")):
+            steps = [
+                self._step(name, {"dataset_id": dataset_ids[0]}, allow)
+                for name in ("dataset_summary", "dataset_quality_report", "dataset_validate", "training_list")
+            ]
+            return AgentStructuredPlan(intent="training_advice", steps=[step for step in steps if step])
+
         if wants_compare and len(model_ids) >= 2:
             step = self._step(
-                "model_compare",
+                "model_comparability" if allow and "model_comparability" in allow else "model_compare",
                 {"baseline_model_id": model_ids[0], "candidate_model_id": model_ids[1]},
                 allow,
             )
             return self._single(step)
+
+        if wants_compare and len(model_ids) == 1:
+            return AgentStructuredPlan(intent="model_comparison_needs_candidate", risks=[
+                "请明确提供第二个受管模型 ID；不会自动选择比较对象。选择后会检查评估可比性。"
+            ])
 
         if wants_eval and model_ids:
             if wants_errors:
@@ -206,6 +234,9 @@ class RuleBasedPlanner:
                 )
             else:
                 step = self._step("evaluation_list", {"model_id": model_ids[0]}, allow)
+            if wants_models and not eval_ids:
+                model = self._step("model_get", {"model_id": model_ids[0]}, allow)
+                return AgentStructuredPlan(intent="model_evaluations", steps=[s for s in (model, step) if s])
             return self._single(step)
 
         if wants_models and model_ids:

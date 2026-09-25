@@ -285,7 +285,7 @@ def build_read_handlers(
     def compare_models_tool(session: Session, arguments: dict[str, Any]) -> dict[str, Any]:
         baseline_id = _require_str_any(arguments, "baseline_model_id", "baseline_model_version_id")
         candidate_id = _require_str_any(arguments, "candidate_model_id", "candidate_model_version_id")
-        result = models.compare(session, baseline_id, candidate_id)
+        result = models.assess_comparability(session, baseline_id, candidate_id)
         for side in ("baseline", "candidate"):
             block = dict(result.get(side) or {})
             block["name"] = untrusted_text(block.get("name"))
@@ -592,6 +592,13 @@ def build_read_handlers(
         ),
     }
 
+    from app.agent.diagnostics import diagnostic_handlers
+
+    primary.update(diagnostic_handlers(primary))
+    primary["model_comparability"] = (
+        "Check model evaluation comparability before ranking: dataset, split, thresholds and missing snapshot evidence.",
+        primary["model_compare"][1], compare_models_tool,
+    )
     legacy_aliases = {
         "list_datasets": "global_summary",
         "get_dataset": "dataset_summary",
@@ -640,6 +647,7 @@ def build_default_registry(
                 parameters=parameters,
                 handler=handler,
                 expose_to_provider=name not in legacy_aliases,
+                canonical_name=legacy_aliases.get(name, name),
             )
         )
     from app.agent.write_tools import register_write_tools

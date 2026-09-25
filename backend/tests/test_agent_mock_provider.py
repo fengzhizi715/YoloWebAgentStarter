@@ -74,3 +74,39 @@ def test_mock_filters_unavailable_tools_from_plan():
     planned = _plan_tools("列出有哪些数据集", available=set())
     assert planned == []
     assert isinstance(ProviderToolCall(name="x", arguments={}, call_id="1"), ProviderToolCall)
+
+
+def test_mock_ignores_previous_turn_tool_results():
+    provider = MockAgentProvider()
+    tools = [
+        {"type": "function", "function": {"name": name, "description": name, "parameters": {"type": "object"}}}
+        for name in ("global_summary", "model_list")
+    ]
+    response = provider.complete(ProviderRequest(
+        messages=[
+            ProviderMessage(role="user", content="列出数据集"),
+            ProviderMessage(role="tool", content='{"tool_name":"global_summary","result":{"dataset_count":2}}'),
+            ProviderMessage(role="assistant", content="数据集 2 个"),
+            ProviderMessage(role="user", content="查看模型"),
+        ],
+        model="mock-model", tools=tools,
+    ))
+    assert [call.name for call in response.tool_calls] == ["model_list"]
+
+
+def test_mock_fetches_evaluations_after_latest_model():
+    provider = MockAgentProvider()
+    tools = [
+        {"type": "function", "function": {"name": name, "description": name, "parameters": {"type": "object"}}}
+        for name in ("model_latest_for_dataset", "evaluation_list")
+    ]
+    question = "请列出数据集 ds_abc 的最新模型和评估结果"
+    response = provider.complete(ProviderRequest(
+        messages=[
+            ProviderMessage(role="user", content=question),
+            ProviderMessage(role="tool", content='{"tool_name":"model_latest_for_dataset","result":{"found":true,"model":{"id":"model_abc","name":"best"}}}'),
+        ], model="mock-model", tools=tools,
+    ))
+    assert [(call.name, call.arguments) for call in response.tool_calls] == [
+        ("evaluation_list", {"model_id": "model_abc"})
+    ]

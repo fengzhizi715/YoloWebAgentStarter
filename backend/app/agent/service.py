@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import timedelta
+from time import monotonic
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -10,15 +11,19 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from app.agent.bounds import bound_json, untrusted_text
 from app.agent.provider import ProviderMessage, ProviderRequest, ProviderToolCall
+from app.agent.prompt import SYSTEM_PROMPT, bounded_history
+from app.agent.profiles import PROFILES, get_profile, infer_profile, permits
 from app.agent.providers.mock import build_provider, build_provider_from_llm, llm_is_usable
 from app.agent.read_tools import build_default_registry
 from app.agent.redaction import redact_text, redact_tool_arguments
 from app.agent.schemas import (
     AgentApprovalDecisionResponse,
     AgentApprovalResponse,
+    AgentContext,
     AgentMessageCreateRequest,
     AgentMessageResponse,
     AgentProviderStatusResponse,
+    AgentProfileResponse,
     AgentRunResponse,
     AgentSessionCreateRequest,
     AgentSessionDetailResponse,
@@ -41,7 +46,9 @@ from app.core.models import (
     AgentSession,
     AgentToolCall,
     AutoAnnotationTask,
+    Dataset,
     ModelEvaluationRecord,
+    ModelVersion,
     TrainingTask,
 )
 from app.core.storage import Storage
@@ -70,6 +77,8 @@ def approval_response(row: AgentApproval) -> AgentApprovalResponse:
 
 
 def run_response(row: AgentRun) -> AgentRunResponse:
+    steps = row.inference_steps_json or []
+    sources = {step["source"] for step in steps}
     return AgentRunResponse(
         id=row.id,
         session_id=row.session_id,
@@ -78,6 +87,12 @@ def run_response(row: AgentRun) -> AgentRunResponse:
         model=row.model,
         error_message=row.error_message,
         stop_requested=row.stop_requested,
+        read_only=row.read_only,
+        context=AgentContext.model_validate(row.context_json or {}),
+        profile_id=row.profile_id,
+        profile_version=row.profile_version,
+        actual_source=next(iter(sources)) if len(sources) == 1 else ("mixed" if sources else "unknown"),
+        inference_steps=steps,
         created_at=row.created_at,
         updated_at=row.updated_at,
         started_at=row.started_at,
@@ -144,16 +159,9 @@ class AgentService:
 
     def provider_status(self) -> AgentProviderStatusResponse:
         provider, llm = self._resolve_provider()
-        configured = provider.name in {"mock", "openai-compatible"} or (
-            getattr(provider, "name", "") == "openai-compatible"
-        )
-        display_provider = "mock" if not llm.enabled else (llm.provider or provider.name)
-        display_model = llm.model if llm.enabled else (self.settings.agent_model or "mock-model")
-        if not llm.enabled and provider.name == "mock":
-            display_provider = "mock"
-            display_model = "mock-model"
-        elif llm.enabled:
-            display_model = llm.model or display_model
+        configured = provider.name in {"mock", "openai-compatible"}
+        display_provider = provider.name
+        display_model = "mock-model" if provider.name == "mock" else (llm.model or self.settings.agent_model)
         return AgentProviderStatusResponse(
             provider=display_provider,
             model=display_model,
@@ -164,19 +172,29 @@ class AgentService:
         )
 
     def create_session(self, session: Session, payload: AgentSessionCreateRequest | None = None) -> AgentSessionResponse:
+        payload = payload or AgentSessionCreateRequest()
+        context = self._validate_context(session, payload.context)
+        profile = get_profile(payload.profile_id or infer_profile(context))
         title = (payload.title if payload and payload.title else None) or "New chat"
-        row = AgentSession(id=new_id("asess"), title=title.strip() or "New chat")
+        row = AgentSession(id=new_id("asess"), title=title.strip() or "New chat",
+                           profile_id=profile.id, profile_version=profile.version, context_json=context)
         session.add(row)
         session.commit()
         session.refresh(row)
         return AgentSessionResponse(
             id=row.id,
             title=row.title,
+            profile_id=row.profile_id, profile_version=row.profile_version,
+            context=AgentContext.model_validate(row.context_json),
             created_at=row.created_at,
             updated_at=row.updated_at,
             message_count=0,
             latest_run_status=None,
         )
+
+    def list_profiles(self) -> list[AgentProfileResponse]:
+        return [AgentProfileResponse(id=p.id, version=p.version, title=p.title, title_en=p.title_en)
+                for p in PROFILES.values()]
 
     def list_sessions(self, session: Session) -> list[AgentSessionResponse]:
         rows = list(session.scalars(select(AgentSession).order_by(AgentSession.updated_at.desc(), AgentSession.id.desc())))
@@ -221,15 +239,56 @@ class AgentService:
         return self._session_summary(session, row)
 
     def delete_session(self, session: Session, session_id: str) -> None:
+        # Serialize deletion with submissions before inspecting active runs.
+        session.execute(update(AgentSession).where(AgentSession.id == session_id).values(updated_at=utc_now()))
         row = self._get_session(session, session_id)
+        active = session.scalar(select(AgentRun.id).where(
+            AgentRun.session_id == session_id, AgentRun.status.in_(("pending", "running", "awaiting_approval"))
+        ))
+        if active:
+            raise ConflictError("agent_run_in_progress", "Cancel the active run before deleting its session.")
         session.delete(row)
         session.commit()
 
-    def post_message(self, session: Session, session_id: str, payload: AgentMessageCreateRequest) -> AgentRunResponse:
-        chat = self._get_session(session, session_id)
+    def _validate_context(self, session: Session, context: AgentContext) -> dict[str, str]:
+        result = context.model_dump(exclude_none=True)
+        dataset_id = context.dataset_id
+        for key, model in (("training_task_id", TrainingTask), ("model_id", ModelVersion)):
+            if key not in result:
+                continue
+            entity = session.get(model, result[key])
+            if entity is None:
+                raise ValidationError("agent_context_not_found", f"Context {key} was not found.")
+            owner = entity.dataset_id
+            if owner and dataset_id and owner != dataset_id:
+                raise ValidationError("agent_context_mismatch", "Context entities belong to different datasets.")
+            dataset_id = dataset_id or owner
+        if dataset_id:
+            if session.get(Dataset, dataset_id) is None:
+                raise ValidationError("agent_context_not_found", "Context dataset was not found.")
+            result["dataset_id"] = dataset_id
+        return result
+
+    def post_message(
+        self, session: Session, session_id: str, payload: AgentMessageCreateRequest, *, execute: bool = True,
+        profile_version: int | None = None,
+    ) -> AgentRunResponse:
         content = payload.content.strip()
         if not content:
             raise ValidationError("invalid_agent_message", "Message content must not be empty.")
+        # Serialize submissions for this session before checking its active run.
+        session.execute(update(AgentSession).where(AgentSession.id == session_id).values(updated_at=utc_now()))
+        chat = self._get_session(session, session_id)
+        session.refresh(chat)
+        context = self._validate_context(session, payload.context if payload.context is not None
+                                         else AgentContext.model_validate(chat.context_json or {}))
+        # Context and mode are independent bindings. Re-sending (or changing)
+        # context must not silently replace the mode selected for this session.
+        profile_id = payload.profile_id or chat.profile_id
+        version = profile_version if profile_version is not None else (
+            chat.profile_version if profile_id == chat.profile_id else get_profile(profile_id).version
+        )
+        profile = get_profile(profile_id, version)
 
         active = session.scalar(
             select(AgentRun).where(
@@ -241,6 +300,13 @@ class AgentService:
             raise ConflictError("agent_run_in_progress", "Wait for the current run to finish, or cancel it first.")
 
         next_sequence = self._next_message_sequence(session, session_id)
+        if next_sequence > 1 and not payload.allow_context_change and (
+            context != (chat.context_json or {}) or profile.id != chat.profile_id or profile.version != chat.profile_version
+        ):
+            raise ConflictError("agent_session_binding_changed", "Assistant mode or context changed. Start a new session or explicitly continue this one.")
+        chat.context_json = context
+        chat.profile_id = profile.id
+        chat.profile_version = profile.version
         provider, llm = self._resolve_provider()
         run_provider = "mock" if provider.name == "mock" else (llm.provider or provider.name)
         run_model = "mock-model" if provider.name == "mock" else (llm.model or self.settings.agent_model)
@@ -250,6 +316,10 @@ class AgentService:
             status="pending",
             provider=run_provider,
             model=run_model,
+            read_only=payload.read_only,
+            context_json=context,
+            profile_id=profile.id,
+            profile_version=profile.version,
         )
         session.add(run)
         session.flush()
@@ -267,13 +337,39 @@ class AgentService:
             chat.title = content[:80]
         session.commit()
 
-        return self._execute_run(session, run.id)
+        return self._execute_run(session, run.id) if execute else self.get_run(session, run.id)
+
+    def retry_run(self, session: Session, run_id: str, *, execute: bool = True) -> AgentRunResponse:
+        original = self._get_run(session, run_id)
+        if original.status not in {"failed", "cancelled"}:
+            raise ConflictError("agent_run_not_retryable", "Only failed or cancelled runs can be retried.")
+        message = next((item for item in original.messages if item.role == "user"), None)
+        if message is None:
+            raise ConflictError("agent_run_not_retryable", "The original question is unavailable.")
+        return self.post_message(session, original.session_id, AgentMessageCreateRequest(
+            content=message.content, read_only=original.read_only,
+            context=AgentContext.model_validate(original.context_json or {}),
+            profile_id=original.profile_id, allow_context_change=True,
+        ), execute=execute, profile_version=original.profile_version)
+
+    def execute_run(self, run_id: str) -> None:
+        """A worker owns its session; never reuse the HTTP request's session."""
+        with self.session_factory() as session:
+            try:
+                self._execute_run(session, run_id)
+            except NotFoundError:
+                # A cancelled session may have been deleted before its worker resumed.
+                return
 
     def get_run(self, session: Session, run_id: str) -> AgentRunResponse:
         run = self._get_run(session, run_id)
         return run_response(run)
 
     def cancel_run(self, session: Session, run_id: str) -> AgentRunResponse:
+        # Read status/approvals only after acquiring the same write lock used by
+        # worker finalization, so cancellation cannot overwrite a completed run
+        # or miss an approval committed while it was waiting for the lock.
+        session.execute(update(AgentRun).where(AgentRun.id == run_id).values(updated_at=utc_now()))
         run = self._get_run(session, run_id)
         if run.status in {"completed", "failed", "cancelled"}:
             return run_response(run)
@@ -294,7 +390,7 @@ class AgentService:
                     approval.decided_at = now
                     approval.error_message = "Cancelled by user."
             for tool in run.tool_calls:
-                if tool.status == "awaiting_approval":
+                if tool.status in {"pending", "running", "awaiting_approval"}:
                     tool.status = "failed"
                     tool.error_message = "Cancelled by user."
         session.commit()
@@ -312,6 +408,8 @@ class AgentService:
 
         if approval.status == "executed" and approval.result_task_id:
             return AgentApprovalDecisionResponse(approval=approval_response(approval), run=run_response(run))
+        if run.read_only or not permits(get_profile(run.profile_id, run.profile_version), self.registry.get(approval.tool_name)):
+            raise ConflictError("agent_profile_tool_not_allowed", "This run's assistant mode does not permit this operation.")
         if approval.status == "rejected":
             raise ConflictError("agent_approval_rejected", "This approval was already rejected.")
         if approval.status == "expired" or (approval.status == "pending" and approval.expires_at <= now):
@@ -550,16 +648,12 @@ class AgentService:
 
     def _execute_run(self, session: Session, run_id: str) -> AgentRunResponse:
         run = self._get_run(session, run_id)
-        if run.stop_requested:
-            run.status = "cancelled"
-            run.finished_at = utc_now()
-            run.error_message = "Cancelled by user."
-            session.commit()
-            return run_response(run)
-
-        run.status = "running"
-        run.started_at = utc_now()
+        started = session.execute(update(AgentRun).where(
+            AgentRun.id == run_id, AgentRun.status == "pending", AgentRun.stop_requested.is_(False),
+        ).values(status="running", started_at=utc_now()))
         session.commit()
+        if started.rowcount != 1:
+            return self.get_run(session, run_id)
         self._log_safe("agent_run_started", run_id=run_id, session_id=run.session_id, provider=run.provider)
 
         try:
@@ -569,21 +663,43 @@ class AgentService:
                     return self._finish_run(session, run, status="cancelled", error="Cancelled by user.")
 
                 request = ProviderRequest(
-                    messages=self._provider_history(session, run.session_id),
+                    messages=self._provider_history(session, run.session_id, run.id),
                     model=run.model,
-                    tools=self.registry.provider_tools(),
+                    tools=self.registry.provider_tools(kind="read" if run.read_only else None,
+                        allowed=get_profile(run.profile_id, run.profile_version).allowed_tools),
+                    context=run.context_json or {},
                 )
+                session.commit()  # Do not hold a database transaction during inference.
                 provider, _llm = self._resolve_provider()
-                response = provider.complete(request)
+                started = monotonic()
+                try:
+                    response = provider.complete(request)
+                except Exception as exc:
+                    self._record_inference_step(
+                        session, run_id, provider=provider.name, model=request.model,
+                        source=getattr(provider, "last_source", "mock" if provider.name == "mock" else "unknown"),
+                        duration_ms=int((monotonic() - started) * 1000), outcome="failed",
+                        reason=getattr(exc, "error_code", "provider_error"),
+                    )
+                    raise
+                self._record_inference_step(
+                    session, run_id, provider=provider.name, model=request.model,
+                    source="mock" if response.source == "unknown" and provider.name == "mock" else response.source,
+                    duration_ms=int((monotonic() - started) * 1000), outcome="completed",
+                    reason=response.fallback_reason,
+                )
 
                 run = self._get_run(session, run_id)
                 if run.stop_requested:
                     return self._finish_run(session, run, status="cancelled", error="Cancelled by user.")
 
                 if response.tool_calls:
-                    awaiting = self._execute_tool_calls(session, run, response.tool_calls)
+                    awaiting = self._execute_tool_calls(session, run, response.tool_calls, read_only=run.read_only)
                     if awaiting:
                         run = self._get_run(session, run_id)
+                        if not self._claim_running_step(session, run_id):
+                            session.rollback()
+                            return self.get_run(session, run_id)
                         assistant = AgentMessage(
                             id=new_id("amsg"),
                             session_id=run.session_id,
@@ -622,17 +738,23 @@ class AgentService:
                 error=f"Exceeded max tool rounds ({self.settings.agent_max_tool_rounds}).",
             )
         except Exception as exc:  # noqa: BLE001 - provider/tool failures become run failures
+            session.rollback()
             run = self._get_run(session, run_id)
             if run.stop_requested:
                 return self._finish_run(session, run, status="cancelled", error="Cancelled by user.")
             self._log_safe("agent_run_failed", run_id=run_id, error=str(exc)[:2000])
             return self._finish_run(session, run, status="failed", error="Agent run failed. Check local logs for details.")
 
-    def _execute_tool_calls(self, session: Session, run: AgentRun, tool_calls: list[ProviderToolCall]) -> bool:
+    def _execute_tool_calls(
+        self, session: Session, run: AgentRun, tool_calls: list[ProviderToolCall], *, read_only: bool = False
+    ) -> bool:
         """Execute tool calls. Returns True when the run should pause for approval."""
         next_tool_sequence = max((item.sequence for item in run.tool_calls), default=0) + 1
         awaiting_approval = False
         for index, call in enumerate(tool_calls):
+            if not self._claim_running_step(session, run.id):
+                session.rollback()
+                return False
             spec = self.registry.get(call.name)
             arguments = call.arguments if isinstance(call.arguments, dict) else {}
             row = AgentToolCall(
@@ -659,6 +781,16 @@ class AgentService:
                 row.status = "failed"
                 row.error_message = result["message"]
                 row.result_json = result
+            elif not permits(get_profile(run.profile_id, run.profile_version), spec):
+                result = {"error": "agent_profile_tool_not_allowed", "message": "This tool is outside the current assistant mode. Switch mode explicitly to continue."}
+                row.status = "failed"
+                row.error_message = result["message"]
+                row.result_json = result
+            elif read_only and spec.kind == "write":
+                result = {"error": "read_only_run", "message": "This question is read-only; no task can be created."}
+                row.status = "failed"
+                row.error_message = result["message"]
+                row.result_json = result
             elif spec.handler is None:
                 result = {"error": "tool_handler_missing", "message": f"Tool '{call.name}' has no handler."}
                 row.status = "failed"
@@ -673,6 +805,11 @@ class AgentService:
                         payload = {"value": payload}
                     row = session.get(AgentToolCall, row.id) or row
                     run = self._get_run(session, run.id)
+                    if not self._claim_running_step(session, run.id):
+                        row.status = "failed"
+                        row.error_message = "Cancelled by user."
+                        session.commit()
+                        return False
                     approval = self.create_approval_record(
                         session,
                         run=run,
@@ -722,6 +859,11 @@ class AgentService:
                     row.error_message = result["message"]
                     row.result_json = result
 
+            if not self._claim_running_step(session, run.id):
+                row.status = "failed"
+                row.error_message = "Cancelled by user."
+                session.commit()
+                return False
             envelope = {
                 "tool_name": call.name,
                 "tool_call_id": call.call_id or row.id,
@@ -853,38 +995,113 @@ class AgentService:
             raise NotFoundError("agent_approval_not_found", "Agent approval was not found.")
         return approval
 
-    def _provider_history(self, session: Session, session_id: str) -> list[ProviderMessage]:
-        history = list(
+    def _provider_history(self, session: Session, session_id: str, run_id: str) -> list[ProviderMessage]:
+        run = self._get_run(session, run_id)
+        current_messages = sorted(run.messages, key=lambda item: item.sequence)
+        first_sequence = min((item.sequence for item in current_messages), default=0)
+        prior = list(
             session.scalars(
                 select(AgentMessage)
-                .where(AgentMessage.session_id == session_id)
-                .order_by(AgentMessage.sequence.asc(), AgentMessage.id.asc())
+                .where(AgentMessage.session_id == session_id, AgentMessage.sequence < first_sequence,
+                       AgentMessage.role.in_(("user", "assistant")))
+                .order_by(AgentMessage.sequence.desc(), AgentMessage.id.desc())
+                .limit(24)
             )
         )
+        history = list(reversed(prior)) + current_messages
+        calls = list(session.scalars(
+            select(AgentToolCall).where(AgentToolCall.run_id == run_id).order_by(AgentToolCall.sequence.asc())
+        ))
+        call_index = 0
         messages: list[ProviderMessage] = []
         for item in history:
             if item.role not in {"user", "assistant", "system", "tool"}:
                 continue
-            name = None
-            tool_call_id = None
             if item.role == "tool":
+                if item.run_id != run_id or call_index >= len(calls):
+                    continue
                 try:
                     payload = json.loads(item.content)
-                    if isinstance(payload, dict):
-                        name = payload.get("tool_name")
-                        tool_call_id = payload.get("tool_call_id")
                 except json.JSONDecodeError:
-                    name = None
-            messages.append(ProviderMessage(role=item.role, content=item.content, name=name, tool_call_id=tool_call_id))
-        return messages
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                call = calls[call_index]
+                call_index += 1
+                call_id = str(payload.get("tool_call_id") or call.id)
+                messages.append(ProviderMessage(
+                    role="assistant", content="",
+                    tool_calls=[ProviderToolCall(name=call.name, arguments=call.arguments_json or {}, call_id=call_id)],
+                ))
+                messages.append(ProviderMessage(
+                    role="tool", content=item.content, name=call.name, tool_call_id=call_id,
+                ))
+                continue
+            messages.append(ProviderMessage(role=item.role, content=item.content))
+        instructions = [ProviderMessage(role="system", content=SYSTEM_PROMPT)]
+        profile = get_profile(run.profile_id, run.profile_version)
+        instructions.append(ProviderMessage(role="system", content=f"助手模式：{profile.title}（{profile.id}@{profile.version}）。{profile.instructions}"))
+        instructions.append(ProviderMessage(role="system", content=(
+            "本轮权限：" + ("只读，禁止写操作。" if run.read_only else "写操作必须经人工确认。")
+        )))
+        if run.context_json:
+            instructions.append(ProviderMessage(role="system", content=(
+                "The current question has these server-validated page context IDs: "
+                + json.dumps(run.context_json, ensure_ascii=False)
+                + ". Resolve 'this/current task/model/dataset' using this context. "
+                "Explicit IDs in the question take precedence. Fetch facts through tools; "
+                "context IDs alone are not evidence of status or quality."
+            )))
+        return instructions + bounded_history(messages)
+
+    def _record_inference_step(
+        self, session: Session, run_id: str, *, provider: str, model: str,
+        source: str, duration_ms: int, outcome: str, reason: str | None,
+    ) -> None:
+        # Persist provenance independently of the answer, including failed or
+        # cancelled calls. Only fixed reason codes enter SQLite, never raw errors.
+        safe_reasons = {
+            "agent_provider_http_error", "agent_provider_unreachable", "agent_provider_bad_response",
+            "agent_provider_unsupported", "missing_evaluation_lookup", "no_tool_calls", "provider_error",
+        }
+        session.execute(update(AgentRun).where(AgentRun.id == run_id).values(updated_at=utc_now()))
+        run = self._get_run(session, run_id)
+        steps = list(run.inference_steps_json or [])
+        steps.append({
+            "round": len(steps) + 1,
+            "source": source if source in {"llm", "mock", "fallback"} else "unknown",
+            "provider": redact_text(provider, secrets=self._secret_values())[:64],
+            "model": redact_text(model, secrets=self._secret_values())[:255],
+            "duration_ms": max(0, duration_ms),
+            "outcome": "discarded" if run.stop_requested else outcome,
+            "reason": reason if reason in safe_reasons else ("provider_error" if reason else None),
+        })
+        run.inference_steps_json = steps
+        session.commit()
+
+    def _claim_running_step(self, session: Session, run_id: str) -> bool:
+        """Serialize a step's finalization with cancellation, without holding the lock during I/O."""
+        claimed = session.execute(update(AgentRun).where(
+            AgentRun.id == run_id, AgentRun.status == "running", AgentRun.stop_requested.is_(False),
+        ).values(updated_at=utc_now()))
+        return claimed.rowcount == 1
 
     def _finish_run(self, session: Session, run: AgentRun, *, status: str, error: str | None = None) -> AgentRunResponse:
-        run.status = status
-        run.finished_at = utc_now()
+        run_id = run.id
+        if status == "cancelled":
+            session.rollback()
+            return self.get_run(session, run_id)
+        values: dict[str, Any] = {"status": status, "finished_at": utc_now()}
         if error:
-            run.error_message = redact_text(error, secrets=self._secret_values())[:2000]
+            values["error_message"] = redact_text(error, secrets=self._secret_values())[:2000]
+        finished = session.execute(update(AgentRun).where(
+            AgentRun.id == run_id, AgentRun.status == "running", AgentRun.stop_requested.is_(False),
+        ).values(**values))
+        if finished.rowcount != 1:
+            session.rollback()
+            return self.get_run(session, run_id)
         session.commit()
-        return self.get_run(session, run.id)
+        return self.get_run(session, run_id)
 
     def _session_summary(self, session: Session, row: AgentSession) -> AgentSessionResponse:
         message_count = session.scalar(
@@ -902,6 +1119,8 @@ class AgentService:
             created_at=row.created_at,
             updated_at=row.updated_at,
             message_count=int(message_count),
+            profile_id=row.profile_id, profile_version=row.profile_version,
+            context=AgentContext.model_validate(row.context_json or {}),
             latest_run_status=None if latest_run is None else latest_run.status,  # type: ignore[arg-type]
         )
 

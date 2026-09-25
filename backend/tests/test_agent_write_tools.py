@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import io
 from datetime import timedelta
+from time import monotonic, sleep
 
+import pytest
 from PIL import Image
 
 from app.agent.providers.mock import _plan_tools
@@ -79,7 +81,8 @@ def test_mock_plans_write_tools():
     assert [item.name for item in auto] == ["create_auto_annotation_task"]
 
 
-def test_write_tool_pauses_for_approval_without_creating_task(client, tmp_path, monkeypatch):
+@pytest.mark.parametrize("wait_for_completion", [True, False])
+def test_write_tool_pauses_for_approval_without_creating_task(client, tmp_path, monkeypatch, wait_for_completion):
     executable = tmp_path / "fake-yolo"
     fake_yolo(executable)
     monkeypatch.setenv("YWA_YOLO_EXECUTABLE", str(executable))
@@ -87,11 +90,15 @@ def test_write_tool_pauses_for_approval_without_creating_task(client, tmp_path, 
 
     session_id = client.post("/api/agent/sessions", json={"title": "write"}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion={str(wait_for_completion).lower()}",
         json={"content": f"请为 {dataset_id} 创建训练任务"},
     )
-    assert run.status_code == 200, run.text
+    assert run.status_code == (200 if wait_for_completion else 202), run.text
     body = run.json()
+    deadline = monotonic() + 5
+    while body["status"] in {"pending", "running"} and monotonic() < deadline:
+        sleep(0.01)
+        body = client.get(f"/api/agent/runs/{body['id']}").json()
     assert body["status"] == "awaiting_approval"
     assert body["approvals"]
     approval = body["approvals"][0]
@@ -104,8 +111,13 @@ def test_write_tool_pauses_for_approval_without_creating_task(client, tmp_path, 
     listed = client.get(f"/api/training/tasks?dataset_id={dataset_id}").json()
     assert listed["items"] == []
 
-    blocked = client.post(f"/api/agent/sessions/{session_id}/messages", json={"content": "next"})
+    blocked = client.post(f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true", json={"content": "next"})
     assert blocked.status_code == 409
+    cancelled = client.post(f"/api/agent/runs/{body['id']}/cancel").json()
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["approvals"][0]["status"] == "rejected"
+    assert client.post(f"/api/agent/approvals/{approval['id']}/approve").status_code == 409
+    assert client.get(f"/api/training/tasks?dataset_id={dataset_id}").json()["items"] == []
 
 
 def test_approve_creates_training_task_once(client, tmp_path, monkeypatch):
@@ -116,7 +128,7 @@ def test_approve_creates_training_task_once(client, tmp_path, monkeypatch):
 
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"请为 {dataset_id} 开始训练"},
     ).json()
     approval_id = run["approvals"][0]["id"]
@@ -149,7 +161,7 @@ def test_approve_accepts_edited_payload(client, tmp_path, monkeypatch):
 
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"请为 {dataset_id} 创建训练任务"},
     ).json()
     approval_id = run["approvals"][0]["id"]
@@ -176,7 +188,7 @@ def test_reject_approval_cancels_run_without_task(client, tmp_path, monkeypatch)
 
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"请为 {dataset_id} 提交训练"},
     ).json()
     approval_id = run["approvals"][0]["id"]
@@ -200,7 +212,7 @@ def test_expired_approval_cannot_execute(client, tmp_path, monkeypatch):
 
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"请为 {dataset_id} 创建训练任务"},
     ).json()
     approval_id = run["approvals"][0]["id"]
@@ -263,7 +275,7 @@ def test_approve_auto_annotation_after_confirmation(client, monkeypatch):
 
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"用 {model_id} 对 {dataset_id} 自动标注"},
     ).json()
     assert run["status"] == "awaiting_approval"
@@ -284,7 +296,7 @@ def test_rejected_approval_cannot_be_approved_later(client, tmp_path, monkeypatc
 
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"请为 {dataset_id} 创建训练任务"},
     ).json()
     approval_id = run["approvals"][0]["id"]
@@ -319,7 +331,7 @@ def test_write_propose_does_not_call_training_create(client, monkeypatch):
     monkeypatch.setattr("app.training.service.TrainingService.create_task", boom)
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"请为 {dataset_id} 创建训练任务"},
     )
     assert run.status_code == 200, run.text
@@ -335,7 +347,7 @@ def test_approve_resumes_reserved_task_id_without_duplicate(client, tmp_path, mo
 
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"请为 {dataset_id} 创建训练任务"},
     ).json()
     approval_id = run["approvals"][0]["id"]
@@ -372,7 +384,7 @@ def test_approve_strips_tampered_payload_keys(client, tmp_path, monkeypatch):
     dataset_id, _ = prepared_dataset(client)
     session_id = client.post("/api/agent/sessions", json={}).json()["id"]
     run = client.post(
-        f"/api/agent/sessions/{session_id}/messages",
+        f"/api/agent/sessions/{session_id}/messages?wait_for_completion=true",
         json={"content": f"请为 {dataset_id} 创建训练任务"},
     ).json()
     approval_id = run["approvals"][0]["id"]
