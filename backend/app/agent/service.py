@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from time import monotonic
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from app.agent.bounds import bound_json, untrusted_text
@@ -29,6 +31,8 @@ from app.agent.schemas import (
     AgentSessionDetailResponse,
     AgentSessionResponse,
     AgentSessionUpdateRequest,
+    AgentSessionPageResponse,
+    AgentTimelineResponse,
     AgentToolCallResponse,
 )
 from app.agent.tools import AgentToolRegistry
@@ -198,7 +202,71 @@ class AgentService:
 
     def list_sessions(self, session: Session) -> list[AgentSessionResponse]:
         rows = list(session.scalars(select(AgentSession).order_by(AgentSession.updated_at.desc(), AgentSession.id.desc())))
-        return [self._session_summary(session, row) for row in rows]
+        return self._session_summaries(session, rows)
+
+    def list_session_page(
+        self, session: Session, *, limit: int = 30, cursor: str | None = None, query: str = "",
+        profile_id: str | None = None, context: AgentContext | None = None,
+    ) -> AgentSessionPageResponse:
+        statement = select(AgentSession)
+        if query.strip():
+            needle = query.strip().lower()
+            statement = statement.where(or_(
+                func.lower(AgentSession.title).contains(needle, autoescape=True),
+                *(func.lower(AgentSession.context_json[key].as_string()).contains(needle, autoescape=True)
+                  for key in ("dataset_id", "training_task_id", "model_id")),
+            ))
+        if profile_id:
+            statement = statement.where(AgentSession.profile_id == profile_id)
+        if context is not None:
+            # Match all selected child objects. Their dataset parent may have
+            # been derived by the server and be absent from the page context.
+            for key in ("training_task_id", "model_id"):
+                column = AgentSession.context_json[key].as_string()
+                value = getattr(context, key)
+                statement = statement.where(column == value if value else column.is_(None))
+            if context.dataset_id or not (context.training_task_id or context.model_id):
+                column = AgentSession.context_json["dataset_id"].as_string()
+                statement = statement.where(column == context.dataset_id if context.dataset_id else column.is_(None))
+        if cursor:
+            try:
+                timestamp, row_id = json.loads(base64.urlsafe_b64decode(cursor.encode("ascii")))
+                stamp = datetime.fromisoformat(timestamp)
+                if stamp.tzinfo is None or not isinstance(row_id, str) or not row_id or len(row_id) > 64:
+                    raise ValueError()
+            except (ValueError, TypeError, UnicodeError, binascii.Error):
+                raise ValidationError("invalid_agent_cursor", "Invalid session page cursor.") from None
+            statement = statement.where(or_(AgentSession.updated_at < stamp,
+                and_(AgentSession.updated_at == stamp, AgentSession.id < row_id)))
+        rows = list(session.scalars(statement.order_by(AgentSession.updated_at.desc(), AgentSession.id.desc()).limit(limit + 1)))
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        next_cursor = None
+        if has_more:
+            last = rows[-1]
+            next_cursor = base64.urlsafe_b64encode(json.dumps([last.updated_at.isoformat(), last.id]).encode()).decode()
+        return AgentSessionPageResponse(items=self._session_summaries(session, rows), next_cursor=next_cursor)
+
+    def get_timeline(self, session: Session, session_id: str, *, limit: int = 50,
+                     before_sequence: int | None = None) -> AgentTimelineResponse:
+        row = self._get_session(session, session_id)
+        statement = select(AgentMessage).where(AgentMessage.session_id == session_id, AgentMessage.role != "tool")
+        if before_sequence is not None:
+            statement = statement.where(AgentMessage.sequence < before_sequence)
+        messages = list(session.scalars(statement.order_by(AgentMessage.sequence.desc()).limit(limit + 1)))
+        has_more = len(messages) > limit
+        messages = messages[:limit]
+        # Only the latest run is needed to resume polling/approvals. Historical
+        # tool payloads are fetched by run ID when the user opens the evidence.
+        runs = []
+        if before_sequence is None:
+            latest_id = session.scalar(select(AgentRun.id).where(AgentRun.session_id == session_id)
+                .order_by(AgentRun.created_at.desc(), AgentRun.id.desc()).limit(1))
+            if latest_id:
+                runs = [self.get_run(session, latest_id)]
+        return AgentTimelineResponse(**self._session_summary(session, row).model_dump(),
+            messages=[message_response(item) for item in reversed(messages)], runs=runs,
+            next_before_sequence=messages[-1].sequence if has_more else None)
 
     def get_session(self, session: Session, session_id: str) -> AgentSessionDetailResponse:
         row = self._get_session(session, session_id)
@@ -1104,25 +1172,29 @@ class AgentService:
         return self.get_run(session, run_id)
 
     def _session_summary(self, session: Session, row: AgentSession) -> AgentSessionResponse:
-        message_count = session.scalar(
-            select(func.count()).select_from(AgentMessage).where(AgentMessage.session_id == row.id)
-        ) or 0
-        latest_run = session.scalar(
-            select(AgentRun)
-            .where(AgentRun.session_id == row.id)
-            .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
-            .limit(1)
-        )
-        return AgentSessionResponse(
+        return self._session_summaries(session, [row])[0]
+
+    def _session_summaries(self, session: Session, rows: list[AgentSession]) -> list[AgentSessionResponse]:
+        if not rows:
+            return []
+        ids = [row.id for row in rows]
+        counts = dict(session.execute(select(AgentMessage.session_id, func.count())
+            .where(AgentMessage.session_id.in_(ids)).group_by(AgentMessage.session_id)).all())
+        ranked = select(AgentRun.session_id, AgentRun.status,
+            func.row_number().over(partition_by=AgentRun.session_id,
+                order_by=(AgentRun.created_at.desc(), AgentRun.id.desc())).label("rank")
+        ).where(AgentRun.session_id.in_(ids)).subquery()
+        statuses = dict(session.execute(select(ranked.c.session_id, ranked.c.status).where(ranked.c.rank == 1)).all())
+        return [AgentSessionResponse(
             id=row.id,
             title=row.title,
             created_at=row.created_at,
             updated_at=row.updated_at,
-            message_count=int(message_count),
+            message_count=int(counts.get(row.id, 0)),
             profile_id=row.profile_id, profile_version=row.profile_version,
             context=AgentContext.model_validate(row.context_json or {}),
-            latest_run_status=None if latest_run is None else latest_run.status,  # type: ignore[arg-type]
-        )
+            latest_run_status=statuses.get(row.id),
+        ) for row in rows]
 
     def _get_session(self, session: Session, session_id: str) -> AgentSession:
         row = session.get(AgentSession, session_id)

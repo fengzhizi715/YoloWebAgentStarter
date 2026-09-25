@@ -468,6 +468,12 @@ export interface AgentSession {
 export interface AgentSessionDetail extends AgentSession {
   messages: AgentMessage[];
   runs: AgentRun[];
+  next_before_sequence?: number | null;
+}
+
+export interface AgentSessionPage {
+  items: AgentSession[];
+  next_cursor: string | null;
 }
 
 export interface AgentProviderStatus {

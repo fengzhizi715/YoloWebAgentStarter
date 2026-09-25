@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.schemas import (
     AgentApprovalDecisionResponse,
+    AgentContext,
     AgentApproveRequest,
     AgentMessageCreateRequest,
     AgentProviderStatusResponse,
@@ -14,7 +15,10 @@ from app.agent.schemas import (
     AgentSessionDetailResponse,
     AgentSessionResponse,
     AgentSessionUpdateRequest,
+    AgentSessionPageResponse,
+    AgentTimelineResponse,
 )
+from app.agent.profiles import ProfileId
 from app.agent.service import AgentService
 from app.api.dependencies import get_agent_service, get_session
 
@@ -47,6 +51,34 @@ def list_agent_sessions(
     service: AgentService = Depends(get_agent_service),
 ) -> list[AgentSessionResponse]:
     return service.list_sessions(session)
+
+
+@router.get("/sessions/page", response_model=AgentSessionPageResponse)
+def list_agent_session_page(
+    limit: int = Query(default=30, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=512),
+    q: str = Query(default="", max_length=200),
+    profile_id: ProfileId | None = None,
+    match_context: bool = False,
+    dataset_id: str | None = Query(default=None, min_length=1, max_length=64),
+    training_task_id: str | None = Query(default=None, min_length=1, max_length=64),
+    model_id: str | None = Query(default=None, min_length=1, max_length=64),
+    session: Session = Depends(get_session),
+    service: AgentService = Depends(get_agent_service),
+) -> AgentSessionPageResponse:
+    context = AgentContext(dataset_id=dataset_id, training_task_id=training_task_id, model_id=model_id) if match_context else None
+    return service.list_session_page(session, limit=limit, cursor=cursor, query=q, profile_id=profile_id, context=context)
+
+
+@router.get("/sessions/{session_id}/timeline", response_model=AgentTimelineResponse)
+def get_agent_timeline(
+    session_id: str,
+    limit: int = Query(default=50, ge=1, le=100),
+    before_sequence: int | None = Query(default=None, ge=1),
+    session: Session = Depends(get_session),
+    service: AgentService = Depends(get_agent_service),
+) -> AgentTimelineResponse:
+    return service.get_timeline(session, session_id, limit=limit, before_sequence=before_sequence)
 
 
 @router.get("/sessions/{session_id}", response_model=AgentSessionDetailResponse)

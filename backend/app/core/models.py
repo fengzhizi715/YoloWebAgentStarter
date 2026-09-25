@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -311,6 +311,7 @@ class AutoAnnotationTask(Base, TimestampMixin):
 
 class AgentSession(Base, TimestampMixin):
     __tablename__ = "agent_sessions"
+    __table_args__ = (Index("ix_agent_sessions_updated_id", "updated_at", "id"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[str] = mapped_column(String(255), default="New chat", nullable=False)
@@ -325,6 +326,7 @@ class AgentSession(Base, TimestampMixin):
 class AgentRun(Base, TimestampMixin):
     __tablename__ = "agent_runs"
     __table_args__ = (
+        Index("ix_agent_runs_session_created_id", "session_id", "created_at", "id"),
         CheckConstraint(
             "status IN ('pending', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')",
             name="ck_agent_run_status",
@@ -355,6 +357,7 @@ class AgentRun(Base, TimestampMixin):
 class AgentMessage(Base, TimestampMixin):
     __tablename__ = "agent_messages"
     __table_args__ = (
+        Index("ix_agent_messages_session_sequence", "session_id", "sequence"),
         CheckConstraint("role IN ('user', 'assistant', 'system', 'tool')", name="ck_agent_message_role"),
     )
 

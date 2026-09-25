@@ -146,6 +146,15 @@ class AgentSessionDetailResponse(AgentSessionResponse):
     runs: list[AgentRunResponse] = Field(default_factory=list)
 
 
+class AgentSessionPageResponse(BaseModel):
+    items: list[AgentSessionResponse]
+    next_cursor: str | None = None
+
+
+class AgentTimelineResponse(AgentSessionDetailResponse):
+    next_before_sequence: int | None = None
+
+
 class AgentProviderStatusResponse(BaseModel):
     provider: str
     model: str

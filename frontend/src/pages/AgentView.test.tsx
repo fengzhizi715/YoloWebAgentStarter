@@ -85,6 +85,7 @@ vi.mock("../api/agent", () => {
     ],
     runs: [run],
   };
+  const listSessions = vi.fn().mockResolvedValue([session]);
   return {
     agentApi: {
       status: vi.fn().mockResolvedValue({
@@ -95,7 +96,8 @@ vi.mock("../api/agent", () => {
         max_tool_rounds: 8,
         approval_ttl_seconds: 3600,
       }),
-      listSessions: vi.fn().mockResolvedValue([session]),
+      listSessions,
+      listSessionPage: vi.fn(async () => ({ items: await listSessions(), next_cursor: null })),
       createSession: vi.fn().mockResolvedValue(session),
       getSession: vi.fn().mockResolvedValue(detail),
       updateSession: vi.fn(),
@@ -125,6 +127,67 @@ afterEach(() => {
 });
 
 describe("AgentView", () => {
+  it("searches conversations on the server without switching or creating a chat", async () => {
+    vi.useFakeTimers();
+    const { agentApi } = await import("../api/agent");
+    await act(async () => {
+      root?.render(<AgentView locale="zh" onOpenDataset={vi.fn()} onOpenTrainingTask={vi.fn()} onOpenModel={vi.fn()} />);
+    });
+    const selected = container?.querySelector(".agent-title-line h2")?.textContent;
+    vi.mocked(agentApi.createSession).mockClear();
+    vi.mocked(agentApi.getSession).mockClear();
+    vi.mocked(agentApi.listSessionPage).mockResolvedValueOnce({ items: [], next_cursor: null });
+    const search = container!.querySelector<HTMLInputElement>('input[type="search"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(search, "does-not-exist");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(agentApi.listSessionPage).toHaveBeenLastCalledWith({ cursor: undefined, query: "does-not-exist" });
+    expect(container?.textContent).toContain("没有匹配的会话");
+    expect(container?.querySelector(".agent-title-line h2")?.textContent).toBe(selected);
+    expect(agentApi.getSession).not.toHaveBeenCalled();
+    expect(agentApi.createSession).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("keeps tool evidence collapsed but available without a new API request", async () => {
+    await act(async () => {
+      root?.render(<AgentView locale="en" onOpenDataset={vi.fn()} onOpenTrainingTask={vi.fn()} onOpenModel={vi.fn()} />);
+    });
+    const evidence = container!.querySelector<HTMLDetailsElement>(".agent-tool-disclosure")!;
+    expect(evidence.open).toBe(false);
+    await act(async () => { evidence.querySelector("summary")!.click(); });
+    expect(evidence.open).toBe(true);
+    const toggle = evidence.querySelector<HTMLButtonElement>(".agent-tool-toggle")!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => { toggle.click(); });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(evidence.querySelector(".agent-tool-result")?.textContent).toContain("ds_abc");
+  });
+
+  it("sends with the read-only toggle and ignores composing or plain Enter", async () => {
+    const { agentApi } = await import("../api/agent");
+    await act(async () => {
+      root?.render(<AgentView locale="zh" onOpenDataset={vi.fn()} onOpenTrainingTask={vi.fn()} onOpenModel={vi.fn()} />);
+    });
+    vi.mocked(agentApi.postMessage).mockClear();
+    const textarea = container!.querySelector("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textarea, "查看状态");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      container!.querySelector<HTMLInputElement>('.agent-readonly-toggle input')!.click();
+    });
+    await act(async () => {
+      textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, isComposing: true, bubbles: true }));
+    });
+    expect(agentApi.postMessage).not.toHaveBeenCalled();
+    await act(async () => { textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true })); });
+    expect(agentApi.postMessage).toHaveBeenCalledTimes(1);
+    expect(agentApi.postMessage).toHaveBeenCalledWith("asess_1", "查看状态", expect.objectContaining({ readOnly: true }));
+  });
+
   it("disables actions until initial conversation selection has finished", async () => {
     const { agentApi } = await import("../api/agent");
     const original = await agentApi.getSession("asess_1");
@@ -197,7 +260,7 @@ describe("AgentView", () => {
     await act(async () => {
       root?.render(<AgentView locale="zh" onOpenDataset={vi.fn()} onOpenTrainingTask={vi.fn()} onOpenModel={vi.fn()} />);
     });
-    const modelMode = [...container!.querySelectorAll<HTMLButtonElement>(".agent-profile-options button")].find((button) => button.textContent === "模型助手")!;
+    const modelMode = container!.querySelector<HTMLButtonElement>('.agent-profile-options button[aria-label="模型助手"]')!;
     await act(async () => { modelMode.click(); });
     expect(container?.querySelector(".agent-binding-warning")?.textContent).toContain("对象或助手模式已改变");
     expect(container?.querySelector<HTMLTextAreaElement>("textarea")?.disabled).toBe(true);
@@ -215,7 +278,7 @@ describe("AgentView", () => {
     await act(async () => {
       root?.render(<AgentView locale="zh" onOpenDataset={vi.fn()} onOpenTrainingTask={vi.fn()} onOpenModel={vi.fn()} />);
     });
-    const trainingMode = [...container!.querySelectorAll<HTMLButtonElement>(".agent-profile-options button")].find((button) => button.textContent === "训练助手")!;
+    const trainingMode = container!.querySelector<HTMLButtonElement>('.agent-profile-options button[aria-label="训练助手"]')!;
     await act(async () => { trainingMode.click(); });
     await act(async () => { container?.querySelector<HTMLButtonElement>(".agent-binding-warning .primary")?.click(); });
     expect(agentApi.createSession).toHaveBeenLastCalledWith("新会话", expect.objectContaining({ profileId: "training" }));
@@ -368,8 +431,7 @@ describe("AgentView", () => {
     const baseline = await agentApi.getSession("asess_1");
     const user = { ...baseline.messages[0], id: "amsg_async", run_id: "arun_async", content: "查看数据集", sequence: 3 };
     const pending = { ...baseline.runs[0], id: "arun_async", status: "pending" as const, messages: [user], tool_calls: [] };
-    const pendingDetail = { ...baseline, messages: [...baseline.messages, user], runs: [pending, ...baseline.runs] };
-    vi.mocked(agentApi.getSession).mockResolvedValueOnce(baseline).mockResolvedValueOnce(pendingDetail);
+    vi.mocked(agentApi.getSession).mockResolvedValueOnce(baseline);
     vi.mocked(agentApi.postMessage).mockResolvedValueOnce(pending);
     vi.useFakeTimers();
     try {
@@ -383,12 +445,16 @@ describe("AgentView", () => {
       expect(cancel?.disabled).toBe(false);
       const running = { ...pending, status: "running" as const,
         tool_calls: [{ ...baseline.runs[0].tool_calls[0], name: "dataset_summary", status: "running" as const }] };
-      vi.mocked(agentApi.getSession).mockResolvedValueOnce({ ...pendingDetail, runs: [running] });
+      vi.mocked(agentApi.getSession).mockClear();
+      vi.mocked(agentApi.listSessionPage).mockClear();
+      vi.mocked(agentApi.getRun).mockResolvedValueOnce(running);
       await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      expect(agentApi.getRun).toHaveBeenLastCalledWith("arun_async");
+      expect(agentApi.getSession).not.toHaveBeenCalled();
+      expect(agentApi.listSessionPage).not.toHaveBeenCalled();
       expect(container?.querySelector('[role="status"]')?.textContent).toContain("正在调用：数据集概览");
       const cancelled = { ...running, status: "cancelled" as const, stop_requested: true };
       vi.mocked(agentApi.cancelRun).mockResolvedValueOnce(cancelled);
-      vi.mocked(agentApi.getSession).mockResolvedValueOnce({ ...pendingDetail, runs: [cancelled] });
       cancel = Array.from(container?.querySelectorAll("button") ?? []).find((button) => button.textContent === "取消运行");
       await act(async () => { cancel?.click(); });
       expect(agentApi.cancelRun).toHaveBeenLastCalledWith("arun_async");
@@ -518,6 +584,8 @@ describe("AgentView", () => {
     });
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(container?.querySelector('[data-testid="agent-approval-slot"]')).toBeTruthy();
+    expect(container?.querySelector('[data-testid="agent-approval-slot"]')?.closest("details")).toBeNull();
+    expect(container?.querySelector(".agent-pending-notice")?.textContent).toContain("尚未创建任务");
     expect(container?.textContent).toContain("只读校验会自动执行");
 
     const approve = Array.from(container?.querySelectorAll("button") ?? []).find((button) => button.textContent === "确认执行");

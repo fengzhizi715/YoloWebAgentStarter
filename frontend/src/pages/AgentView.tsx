@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { agentApi } from "../api/agent";
 import {
   editableApprovalFields,
@@ -9,6 +9,9 @@ import {
 import { isActiveRunStatus, linksFromText, linksFromToolCall, type AgentEntityLink } from "../agent/entityLinks";
 import { inferenceReasonLabel, inferenceSourceLabel } from "../agent/inferenceLabels";
 import { AgentContextPicker } from "../agent/AgentContextPicker";
+import { ReportText } from "../agent/ReportText";
+import { mergeMessages, mergeRun } from "../agent/history";
+import { IconPlus, IconSearch, IconSpark } from "../components/training/icons";
 import { sameBinding, inferProfile, matchingSession, profileTitle } from "../agent/profiles";
 import {
   approvalStatusLabel,
@@ -168,6 +171,19 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
   const [detail, setDetail] = useState<AgentSessionDetail>();
   const [status, setStatus] = useState<AgentProviderStatus>();
   const [draft, setDraft] = useState("");
+  const [readOnlyDraft, setReadOnlyDraft] = useState(false);
+  const [sessionSearch, setSessionSearch] = useState("");
+  const [sessionCursor, setSessionCursor] = useState<string | null>(null);
+  const [listingSessions, setListingSessions] = useState(false);
+  const listEpoch = useRef(0);
+  const searchQuery = useRef("");
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasNewReply, setHasNewReply] = useState(false);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
+  const [evidenceRuns, setEvidenceRuns] = useState<Record<string, AgentRun>>({});
+  const [openEvidence, setOpenEvidence] = useState<Record<string, boolean>>({});
+  const [loadingEvidence, setLoadingEvidence] = useState<Record<string, boolean>>({});
+  const historyAnchor = useRef<{ sessionId: string; height: number; top: number }>();
   const [actionBusy, setBusy] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
   const busy = actionBusy || loadingSession;
@@ -175,7 +191,9 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
   const [renaming, setRenaming] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const conversationRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const latestSequence = useRef(0);
   const bindingChanged = Boolean(detail && detail.message_count > 0 &&
     !sameBinding(detail.profile_id ?? "global", detail.context, profileId, bindingContext));
   const needsBindingChoice = bindingChanged && !bindingConfirmed;
@@ -185,21 +203,37 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
     return runs.find((run) => isActiveRunStatus(run.status)) || runs[0];
   }, [detail]);
 
-  const refreshSessions = async () => {
-    const items = await agentApi.listSessions();
-    setSessions(items);
-    return items;
+  const refreshSessions = async (cursor?: string) => {
+    const epoch = ++listEpoch.current;
+    setListingSessions(true);
+    try {
+      const page = await agentApi.listSessionPage({ cursor, query: searchQuery.current });
+      if (epoch !== listEpoch.current) return [];
+      setSessions((current) => cursor ? [...new Map([...current, ...page.items].map((item) => [item.id, item])).values()] : page.items);
+      setSessionCursor(page.next_cursor);
+      return page.items;
+    } catch (reason) {
+      if (epoch !== listEpoch.current) return [];
+      throw reason;
+    } finally {
+      if (epoch === listEpoch.current) setListingSessions(false);
+    }
   };
 
   const loadSession = async (id: string, restoreBinding = false) => {
     const epoch = ++selectionEpoch.current;
     selectedSessionId.current = id;
+    setLoadingOlder(false); historyAnchor.current = undefined;
+    setOpenEvidence({}); setEvidenceRuns({}); setLoadingEvidence({});
+    setHasNewReply(false); setAwayFromBottom(false);
     setLoadingSession(true);
     try {
       const next = await agentApi.getSession(id);
       if (epoch !== selectionEpoch.current) return next;
       setDetail(next);
+      latestSequence.current = Math.max(0, ...next.messages.map((message) => message.sequence));
       setSessionId(next.id);
+      if (restoreBinding || next.id !== sessionId) followLatest.current = true;
       setTitleDraft(next.title);
       setRenaming(false);
       if (restoreBinding) {
@@ -227,6 +261,9 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
     setBindingContext(incoming); setProfileId(incomingProfile); setBindingConfirmed(false);
     setDetail(undefined); setSessionId(undefined);
     setLoadingSession(true); setDraft(""); setRenaming(false); setError("");
+    setLoadingOlder(false); historyAnchor.current = undefined;
+    setOpenEvidence({}); setEvidenceRuns({}); setLoadingEvidence({});
+    setHasNewReply(false); setAwayFromBottom(false); followLatest.current = true; latestSequence.current = 0;
     selectedSessionId.current = undefined;
     ++selectionEpoch.current;
     void (async () => {
@@ -234,7 +271,14 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
         const [provider, items] = await Promise.all([agentApi.status(), refreshSessions()]);
         if (disposed) return;
         setStatus(provider);
-        const match = matchingSession(items, incomingProfile, incoming);
+        // A sidebar search must not influence which bound conversation a
+        // dataset/training/model navigation restores.
+        let match = searchQuery.current ? undefined : matchingSession(items, incomingProfile, incoming);
+        if (!match) {
+          const page = await agentApi.listSessionPage({ profileId: incomingProfile, context: incoming, limit: 1 });
+          if (disposed) return;
+          match = matchingSession(page.items, incomingProfile, incoming);
+        }
         if (match) await loadSession(match.id);
       } catch (reason) {
         if (!disposed) setError(reason instanceof Error ? reason.message : "Request failed");
@@ -242,8 +286,20 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
         if (!disposed) setLoadingSession(false);
       }
     })();
-    return () => { disposed = true; ++selectionEpoch.current; };
+    return () => { disposed = true; ++selectionEpoch.current; ++listEpoch.current; };
   }, [pageContext?.dataset?.id, pageContext?.trainingTask?.id, pageContext?.model?.id]);
+
+  useEffect(() => {
+    const query = sessionSearch.trim();
+    if (query === searchQuery.current) return;
+    searchQuery.current = query;
+    ++listEpoch.current;
+    setListingSessions(true);
+    const timer = window.setTimeout(() => {
+      void refreshSessions().catch((reason) => setError(reason instanceof Error ? reason.message : "Request failed"));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [sessionSearch]);
 
   useEffect(() => {
     if (!activeRun || !sessionId || !isActiveRunStatus(activeRun.status)) return;
@@ -252,10 +308,9 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
     const timer = window.setInterval(() => {
       if (inFlight) return;
       inFlight = true;
-      void agentApi.getSession(sessionId).then((next) => {
+      void agentApi.getRun(activeRun.id).then((next) => {
         if (disposed || sessionId !== selectedSessionId.current) return;
-        setDetail(next);
-        void refreshSessions().catch(() => undefined);
+        acceptRun(next);
       }).catch((reason) => {
         if (!disposed) setError(reason instanceof Error ? reason.message : "Request failed");
       }).finally(() => { inFlight = false; });
@@ -263,9 +318,38 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
     return () => { disposed = true; window.clearInterval(timer); };
   }, [activeRun?.id, activeRun?.status, sessionId]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
-  }, [detail?.messages.length, activeRun?.status]);
+  useLayoutEffect(() => {
+    const pane = conversationRef.current;
+    const anchor = historyAnchor.current;
+    if (pane && anchor && anchor.sessionId === sessionId) {
+      pane.scrollTop = anchor.top + pane.scrollHeight - anchor.height;
+      historyAnchor.current = undefined;
+    } else if (pane && followLatest.current) {
+      pane.scrollTop = detail?.messages.length ? pane.scrollHeight : 0;
+    }
+  }, [sessionId, detail?.messages.length, detail?.next_before_sequence, activeRun?.status]);
+
+  const loadOlder = async () => {
+    const before = detail?.next_before_sequence;
+    if (!sessionId || !before || loadingOlder || busy) return;
+    const epoch = selectionEpoch.current;
+    const target = sessionId;
+    setLoadingOlder(true);
+    try {
+      const page = await agentApi.getSession(target, { beforeSequence: before });
+      if (epoch !== selectionEpoch.current || selectedSessionId.current !== target) return;
+      const pane = conversationRef.current;
+      if (pane) historyAnchor.current = { sessionId: target, height: pane.scrollHeight, top: pane.scrollTop };
+      followLatest.current = false;
+      setDetail((current) => current?.id === target ? { ...current,
+        messages: mergeMessages(current.messages, page.messages), next_before_sequence: page.next_before_sequence,
+      } : current);
+    } catch (reason) {
+      if (epoch === selectionEpoch.current) setError(reason instanceof Error ? reason.message : "Request failed");
+    } finally {
+      if (epoch === selectionEpoch.current) setLoadingOlder(false);
+    }
+  };
 
   const createSession = async () => {
     setBusy(true); setError("");
@@ -303,26 +387,33 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
   };
 
   const acceptRun = (run: AgentRun) => {
-    setSessionId(run.session_id);
-    setDetail((current) => current?.id === run.session_id ? {
-      ...current,
-      latest_run_status: run.status,
-      runs: [run, ...current.runs.filter((item) => item.id !== run.id)],
-      messages: [...current.messages.filter((item) => item.run_id !== run.id), ...run.messages]
-        .sort((left, right) => left.sequence - right.sequence),
-    } : current);
+    if (selectedSessionId.current !== run.session_id) return;
+    if (!followLatest.current && run.messages.some((message) => message.role === "assistant" && message.sequence > latestSequence.current)) setHasNewReply(true);
+    latestSequence.current = Math.max(latestSequence.current, ...run.messages.map((message) => message.sequence));
+    setDetail((current) => current ? mergeRun(current, run) : current);
+    setSessions((current) => current.map((item) => item.id === run.session_id ? {
+      ...item, latest_run_status: run.status, updated_at: run.updated_at,
+      profile_id: run.profile_id ?? item.profile_id, profile_version: run.profile_version ?? item.profile_version, context: run.context,
+    } : item));
   };
 
   const submitMessage = async (raw: string, readOnly = false) => {
     const content = raw.trim();
     if (!content || busy || needsBindingChoice) return;
+    followLatest.current = true;
+    setHasNewReply(false); setAwayFromBottom(false);
     setBusy(true); setError("");
+    const epoch = selectionEpoch.current;
     try {
       let targetId = sessionId;
       if (!targetId) {
         const created = await agentApi.createSession(content.slice(0, 80), { profileId, context: bindingContext });
+        if (epoch !== selectionEpoch.current) return;
         targetId = created.id;
-        await refreshSessions();
+        selectedSessionId.current = targetId;
+        setSessionId(targetId);
+        setDetail({ ...created, messages: [], runs: [] });
+        latestSequence.current = 0;
       }
       const run = await agentApi.postMessage(targetId, content, {
         readOnly,
@@ -330,9 +421,9 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
         profileId,
         allowContextChange: bindingChanged && bindingConfirmed,
       });
+      if (epoch !== selectionEpoch.current) return;
       acceptRun(run);
       setDraft("");
-      await loadSession(targetId);
       setBindingConfirmed(false);
       await refreshSessions();
     } catch (reason) {
@@ -344,15 +435,15 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
 
   const sendMessage = (event: FormEvent) => {
     event.preventDefault();
-    void submitMessage(draft);
+    void submitMessage(draft, readOnlyDraft);
   };
 
   const renameSession = async () => {
     if (!sessionId || !titleDraft.trim() || busy) return;
     setBusy(true); setError("");
     try {
-      await agentApi.updateSession(sessionId, titleDraft.trim());
-      await loadSession(sessionId);
+      const updated = await agentApi.updateSession(sessionId, titleDraft.trim());
+      setDetail((current) => current?.id === sessionId ? { ...current, ...updated } : current);
       await refreshSessions();
       setRenaming(false);
     } catch (reason) {
@@ -368,7 +459,6 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
     try {
       const run = await agentApi.cancelRun(activeRun.id);
       acceptRun(run);
-      if (sessionId) await loadSession(sessionId);
       await refreshSessions();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Request failed");
@@ -386,9 +476,8 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
     setBusy(true);
     setError("");
     try {
-      if (decision === "approve") await agentApi.approveApproval(approvalId, payload);
-      else await agentApi.rejectApproval(approvalId);
-      await loadSession(sessionId);
+      const result = decision === "approve" ? await agentApi.approveApproval(approvalId, payload) : await agentApi.rejectApproval(approvalId);
+      acceptRun(result.run);
       await refreshSessions();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Request failed");
@@ -397,13 +486,33 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
     }
   };
 
-  const openLink = (link: AgentEntityLink) => {
+  const openLink = useCallback((link: AgentEntityLink) => {
     if (link.kind === "dataset") onOpenDataset(link.id);
     else if (link.kind === "training") onOpenTrainingTask(link.datasetId, link.id);
     else onOpenModel(link.datasetId, link.id);
+  }, [onOpenDataset, onOpenTrainingTask, onOpenModel]);
+
+  const toggleEvidence = async (runId: string) => {
+    if (loadingEvidence[runId]) return;
+    if (openEvidence[runId]) { setOpenEvidence((current) => ({ ...current, [runId]: false })); return; }
+    const epoch = selectionEpoch.current;
+    setLoadingEvidence((current) => ({ ...current, [runId]: true }));
+    try {
+      const run = detail?.runs.find((item) => item.id === runId) ?? evidenceRuns[runId] ?? await agentApi.getRun(runId);
+      if (epoch !== selectionEpoch.current || run.session_id !== selectedSessionId.current) return;
+      setEvidenceRuns((current) => ({ ...current, [runId]: run }));
+      setOpenEvidence((current) => ({ ...current, [runId]: true }));
+    } catch (reason) {
+      if (epoch === selectionEpoch.current) setError(reason instanceof Error ? reason.message : "Request failed");
+    } finally {
+      if (epoch === selectionEpoch.current) setLoadingEvidence((current) => ({ ...current, [runId]: false }));
+    }
   };
 
   const messages = detail?.messages || [];
+  const lastMessageByRun = useMemo(() => new Map((detail?.messages ?? [])
+    .filter((message) => message.run_id && message.role !== "tool")
+    .map((message) => [message.run_id, message.id])), [detail?.messages]);
   const focusRun =
     (activeRun?.status === "awaiting_approval" ? activeRun : undefined) ||
     detail?.runs.find((run) => run.id === messages[messages.length - 1]?.run_id) ||
@@ -413,6 +522,7 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
   );
   const lastUserMessage = [...messages].reverse().find((item) => item.role === "user");
   const quickPrompts = buildQuickPrompts(locale, context, profileId);
+  const visibleSessions = sessions;
   const canRetryLast =
     Boolean(lastUserMessage?.content) &&
     !busy &&
@@ -428,7 +538,7 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
     try {
       const run = await agentApi.retryRun(activeRun.id);
       acceptRun(run);
-      await loadSession(sessionId, true);
+      setBindingContext(run.context); setProfileId(run.profile_id ?? "global"); setBindingConfirmed(false);
       await refreshSessions();
       setDraft("");
     } catch (reason) {
@@ -448,13 +558,12 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
         </div>
         <div className="header-actions">
           {status ? (
-            <span className="agent-provider-badge">
-              {text.provider}: {status.provider}/{status.model}
-              {status.provider === "mock" ? " · local rules" : ""}
+            <span className="agent-provider-badge" title={`${text.provider}: ${status.provider}/${status.model}`}>
+              {status.provider === "mock" ? (locale === "zh" ? "本地规则" : "Local rules") : status.model}
               {!status.configured ? ` · ${text.providerUnsupported}` : ""}
             </span>
           ) : null}
-          <button className="button primary" onClick={() => void createSession()} disabled={busy}>{text.newChat}</button>
+          <button className="button primary" onClick={() => void createSession()} disabled={busy}><IconPlus size={15} />{text.newChat}</button>
         </div>
       </header>
       {error ? <div className="validation invalid"><span>{error}</span></div> : null}
@@ -469,28 +578,34 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
 
       <div className="agent-section-layout">
         <aside className="agent-session-rail panel" aria-label={text.sessions}>
-          <header className="agent-rail-head"><strong>{text.sessions}</strong><span>{sessions.length}</span></header>
-          {sessions.length === 0 ? <p className="muted agent-empty">{text.emptySessions}</p> : (
+          <header className="agent-rail-head"><strong>{text.sessions}</strong><span>{sessions.length}{sessionCursor ? "+" : ""}</span></header>
+          <label className="agent-session-search"><IconSearch size={15} /><input type="search" value={sessionSearch}
+            aria-label={locale === "zh" ? "搜索会话" : "Search conversations"}
+            maxLength={200} placeholder={locale === "zh" ? "搜索标题或对象 ID…" : "Search titles or object IDs…"}
+            onChange={(event) => setSessionSearch(event.target.value)} /></label>
+          {listingSessions ? <small className="muted" aria-live="polite">{text.refreshing}</small> : null}
+          {visibleSessions.length === 0 && !listingSessions ? <p className="muted agent-empty">{!sessionSearch.trim() ? text.emptySessions : locale === "zh" ? "没有匹配的会话" : "No matching conversations"}</p> : (
             <ul className="agent-session-list">
-              {sessions.map((session) => (
+              {visibleSessions.map((session) => (
                 <li key={session.id} className={session.id === sessionId ? "active" : undefined}>
-                  <button className="agent-session-item" onClick={() => void loadSession(session.id, true).catch(() => undefined)} disabled={busy}>
+                  <button className="agent-session-item" aria-current={session.id === sessionId ? "page" : undefined} title={session.title} onClick={() => void loadSession(session.id, true).catch(() => undefined)} disabled={busy}>
                     <strong>{session.title || session.id}</strong>
                     <small>
                       {profileTitle(session.profile_id ?? "global", locale)} · {session.message_count} · {runStatusLabel(session.latest_run_status, locale)}
-                      {Object.values(session.context ?? {}).filter(Boolean).length ? ` · ${Object.values(session.context ?? {}).filter(Boolean).join(" / ")}` : ""}
                     </small>
                   </button>
-                  <button className="agent-session-delete" onClick={() => void removeSession(session.id)} disabled={busy} aria-label={text.delete}>×</button>
+                  <button className="agent-session-delete" onClick={() => void removeSession(session.id)} disabled={busy} aria-label={`${text.delete}: ${session.title}`} title={text.delete}>×</button>
                 </li>
               ))}
             </ul>
           )}
+          {sessionCursor ? <button className="button agent-load-more" disabled={listingSessions} onClick={() => void refreshSessions(sessionCursor).catch((reason) => setError(reason instanceof Error ? reason.message : "Request failed"))}>
+            {locale === "zh" ? "更多会话" : "More conversations"}
+          </button> : null}
         </aside>
 
         <section className="agent-chat panel">
             <>
-              {!detail ? <p className="muted agent-empty">{loadingSession ? text.refreshing : locale === "zh" ? "没有此模式与对象的会话，发送问题将新建会话。" : "No chat matches this mode and context. Sending a question starts a new chat."}</p> : null}
               <header className="agent-chat-head">
                 <div>
                   {renaming ? (
@@ -500,12 +615,12 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
                       <button className="button" type="button" onClick={() => { setTitleDraft(detail?.title ?? ""); setRenaming(false); }} disabled={busy}>{text.cancelRename}</button>
                     </div>
                   ) : (
-                    <div className="agent-title-line"><h2>{detail?.title ?? text.newChat}</h2><button className="button" type="button" onClick={() => setRenaming(true)} disabled={busy || !detail}>{text.rename}</button></div>
+                    <div className="agent-title-line"><h2 title={detail?.title}>{detail?.title ?? profileTitle(profileId, locale)}</h2><button className="button" type="button" onClick={() => setRenaming(true)} disabled={busy || !detail}>{text.rename}</button></div>
                   )}
                   <p>{text.status}: {runStatusLabel(activeRun?.status, locale)}{busy ? ` · ${text.refreshing}` : ""}{activeRun ? ` · ${activeRun.read_only ? text.readOnly : text.confirmWrites}` : ""}</p>
                   {activeRun ? <p>{locale === "zh" ? "本轮模式" : "Run mode"}: {profileTitle(activeRun.profile_id ?? "global", locale)} v{activeRun.profile_version ?? 1}</p> : null}
                   {activeRun && Object.values(activeRun.context ?? {}).some(Boolean) ? (
-                    <p>{text.runContext}: {Object.values(activeRun.context).filter(Boolean).join(" · ")}</p>
+                    <p className="agent-run-context" title={Object.values(activeRun.context).filter(Boolean).join(" · ")}>{text.runContext}: {Object.values(activeRun.context).filter(Boolean).join(" · ")}</p>
                   ) : null}
                 </div>
                 {activeRun && isActiveRunStatus(activeRun.status) ? (
@@ -539,6 +654,16 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
                 </div>
               ) : null}
 
+              <div className="agent-conversation-body" ref={conversationRef}
+                onScroll={(event) => {
+                  const pane = event.currentTarget;
+                  followLatest.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 64;
+                  setAwayFromBottom(!followLatest.current);
+                  if (followLatest.current) setHasNewReply(false);
+                }}>
+              {detail?.next_before_sequence ? <button className="button agent-load-history" disabled={loadingOlder || busy} onClick={() => void loadOlder()}>
+                {loadingOlder ? text.refreshing : locale === "zh" ? "加载更早消息" : "Load earlier messages"}
+              </button> : null}
               {activeRun?.status === "pending" || activeRun?.status === "running" ? (
                 <p role="status" className="agent-empty">
                   {activeRun.status === "pending" ? text.queued : activeRun.tool_calls.some((tool) => tool.status === "running")
@@ -548,24 +673,46 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
               ) : null}
               {activeRun?.status === "failed" && activeRun.error_message ? <p className="validation invalid">{activeRun.error_message}</p> : null}
 
+              {!messages.length ? <div className="agent-welcome">
+                <span className="agent-welcome-icon"><IconSpark size={28} /></span>
+                <h3>{loadingSession ? text.refreshing : locale === "zh" ? "从一个问题开始" : "Start with a question"}</h3>
+                <p>{locale === "zh" ? "分析数据质量、了解训练进度，或解读模型表现。" : "Explore data quality, training progress, or model performance."}</p>
+                <small>{locale === "zh" ? "选择下方快捷提问，或输入你的问题。任何任务都需你确认后执行。" : "Try a suggestion below or write your question. Tasks always need your confirmation."}</small>
+              </div> : null}
               <div className="agent-message-list">
                 {messages.filter((message) => message.role !== "tool").map((message) => (
+                  <div className="agent-turn-message" key={message.id}>
                   <MessageBubble
-                    key={message.id}
                     message={message}
                     text={text}
                     onOpenLink={openLink}
                   />
+                  {message.run_id && lastMessageByRun.get(message.run_id) === message.id ? <>
+                    <button className="agent-evidence-toggle" type="button" disabled={Boolean(loadingEvidence[message.run_id])}
+                      aria-expanded={Boolean(openEvidence[message.run_id])} aria-controls={`evidence-${message.id}`}
+                      onClick={() => void toggleEvidence(message.run_id!)}>
+                      {loadingEvidence[message.run_id] ? text.refreshing : openEvidence[message.run_id]
+                        ? (locale === "zh" ? "收起本轮证据" : "Hide turn evidence") : (locale === "zh" ? "查看本轮证据与记录" : "View turn evidence and records")}
+                    </button>
+                    <div id={`evidence-${message.id}`} hidden={!openEvidence[message.run_id]}>
+                      {openEvidence[message.run_id] && (detail?.runs.find((run) => run.id === message.run_id) ?? evidenceRuns[message.run_id]) ? (() => {
+                        const run = detail?.runs.find((item) => item.id === message.run_id) ?? evidenceRuns[message.run_id!];
+                        return <section className="agent-turn-evidence">
+                          <p>{profileTitle(run.profile_id ?? "global", locale)} v{run.profile_version ?? 1} · {runStatusLabel(run.status, locale)} · {run.read_only ? text.readOnly : text.confirmWrites}</p>
+                          <p>{locale === "zh" ? "实际来源" : "Actual source"}: {inferenceSourceLabel(run.actual_source, locale)} · {run.model}</p>
+                          <p>{Object.values(run.context ?? {}).filter(Boolean).join(" · ")}</p>
+                          {run.error_message ? <p className="validation invalid">{run.error_message}</p> : null}
+                          {run.inference_steps?.length ? <ul>{run.inference_steps.map((step) => <li key={step.round}>#{step.round} · {inferenceSourceLabel(step.source, locale)} · {step.duration_ms} ms{step.reason ? ` · ${inferenceReasonLabel(step.reason, locale)}` : ""}</li>)}</ul> : null}
+                          <ToolPanel run={run} text={text} locale={locale} expanded={expandedTools}
+                            onToggle={(id) => setExpandedTools((current) => ({ ...current, [id]: !current[id] }))} onOpenLink={openLink} />
+                          {run.approvals.map((approval) => <p key={approval.id}>{toolNameLabel(approval.tool_name, locale)} · {approvalStatusLabel(approval.status, locale)}{approval.result_task_id ? ` · ${approval.result_task_id}` : ""}</p>)}
+                        </section>;
+                      })() : null}
+                    </div>
+                  </> : null}
+                  </div>
                 ))}
-                <div ref={bottomRef} />
               </div>
-
-              <QuickPromptBar
-                prompts={quickPrompts}
-                title={text.quickPrompts}
-                disabled={busy || needsBindingChoice || Boolean(activeRun && isActiveRunStatus(activeRun.status))}
-                onSelect={(prompt) => void submitMessage(prompt, true)}
-              />
 
               {context?.dataset || context?.trainingTask || context?.model ? (
                 <div className="agent-context-card">
@@ -596,19 +743,51 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
                   onReject={(id) => void decideApproval(id, "reject")}
                 />
               ) : null}
+              </div>
+
+              <div className="agent-compose-area">
+              {awayFromBottom || hasNewReply ? <button className="button agent-jump-latest" onClick={() => {
+                followLatest.current = true; setHasNewReply(false); setAwayFromBottom(false);
+                const pane = conversationRef.current; if (pane) pane.scrollTop = pane.scrollHeight;
+              }}>
+                {hasNewReply ? (locale === "zh" ? "有新回复 · 回到最新" : "New reply · Jump to latest") : (locale === "zh" ? "回到最新" : "Jump to latest")}
+              </button> : null}
+              {pendingApprovals.length > 0 ? <p className="agent-pending-notice" role="status">
+                {locale === "zh" ? "有待确认操作，尚未创建任务。请先审核上方参数。" : "Approval required. No task has been created; review the parameters above."}
+              </p> : null}
+              <QuickPromptBar
+                prompts={quickPrompts}
+                title={text.quickPrompts}
+                disabled={busy || needsBindingChoice || Boolean(activeRun && isActiveRunStatus(activeRun.status))}
+                onSelect={(prompt) => void submitMessage(prompt, true)}
+              />
 
               <form className="agent-composer" onSubmit={sendMessage}>
                 <textarea
+                  aria-label={locale === "zh" ? "消息" : "Message"}
+                  aria-describedby="agent-composer-hint"
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      if (!activeRun || !isActiveRunStatus(activeRun.status)) void submitMessage(draft, readOnlyDraft);
+                    }
+                  }}
                   placeholder={text.placeholder}
-                  rows={3}
+                  rows={2}
                   disabled={busy || needsBindingChoice || (activeRun ? isActiveRunStatus(activeRun.status) : false)}
                 />
+                <div className="agent-composer-footer">
+                <label className="agent-readonly-toggle"><input type="checkbox" checked={readOnlyDraft} disabled={busy || Boolean(activeRun && isActiveRunStatus(activeRun.status))} onChange={(event) => setReadOnlyDraft(event.target.checked)} />{locale === "zh" ? "仅查询" : "Read-only"}</label>
+                <span id="agent-composer-hint">{locale === "zh" ? "Ctrl / ⌘ + Enter 发送" : "Ctrl / ⌘ + Enter to send"}</span>
                 <button className="button primary" type="submit" disabled={busy || needsBindingChoice || !draft.trim() || (activeRun ? isActiveRunStatus(activeRun.status) : false)}>
                   {text.send}
                 </button>
+                </div>
               </form>
+              <p className="agent-safety-note">{readOnlyDraft ? (locale === "zh" ? "仅查询模式不会生成执行申请。" : "Read-only mode never proposes write actions.") : text.confirmWrites}{locale === "zh" ? " · 请结合工具证据核实回答" : " · Verify answers against tool evidence"}</p>
+              </div>
             </>
         </section>
       </div>
@@ -616,7 +795,7 @@ export function AgentView({ locale, context: pageContext, onOpenDataset, onOpenT
   );
 }
 
-function MessageBubble({
+const MessageBubble = memo(function MessageBubble({
   message,
   text,
   onOpenLink,
@@ -639,7 +818,7 @@ function MessageBubble({
   return (
     <article className={`agent-message role-${message.role}`}>
       <header><span>{roleLabel}</span></header>
-      <pre>{body}</pre>
+      {message.role === "assistant" ? <ReportText content={body} /> : <pre>{body}</pre>}
       {links.length > 0 ? (
         <div className="agent-entity-links">
           {links.map((link) => (
@@ -651,7 +830,7 @@ function MessageBubble({
       ) : null}
     </article>
   );
-}
+});
 
 function ToolPanel({
   run,
@@ -669,18 +848,18 @@ function ToolPanel({
   onOpenLink: (link: AgentEntityLink) => void;
 }) {
   if (!run.tool_calls.length) {
-    return <section className="agent-tools"><h3>{text.tools}</h3><p className="muted">{text.noTools}</p></section>;
+    return <p className="agent-no-tools">{text.noTools}</p>;
   }
   return (
-    <section className="agent-tools">
-      <h3>{text.tools}</h3>
+    <details className="agent-tools agent-tool-disclosure" key={run.id}>
+      <summary><strong>{text.tools}</strong><span>{run.tool_calls.length} {locale === "zh" ? "项记录 · 查看证据" : "records · View evidence"}</span></summary>
       <ul>
         {run.tool_calls.map((tool) => {
           const links = linksFromToolCall(tool);
           const open = expanded[tool.id];
           return (
             <li key={tool.id} className="agent-tool-card">
-              <button type="button" className="agent-tool-toggle" onClick={() => onToggle(tool.id)}>
+              <button type="button" className="agent-tool-toggle" aria-expanded={Boolean(open)} aria-controls={`tool-json-${tool.id}`} onClick={() => onToggle(tool.id)}>
                 <strong>{toolNameLabel(tool.name, locale)}</strong>
                 <span className={`agent-tool-status status-${tool.status}`}>{toolStatusLabel(tool.status, locale)}</span>
               </button>
@@ -695,12 +874,12 @@ function ToolPanel({
                 </div>
               ) : null}
               <ToolReportCard tool={tool} locale={locale} text={text} />
-              {open ? <ToolResultPreview tool={tool} /> : null}
+              <div id={`tool-json-${tool.id}`} hidden={!open}>{open ? <ToolResultPreview tool={tool} /> : null}</div>
             </li>
           );
         })}
       </ul>
-    </section>
+    </details>
   );
 }
 

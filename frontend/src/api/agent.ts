@@ -6,6 +6,7 @@ import type {
   AgentRun,
   AgentSession,
   AgentSessionDetail,
+  AgentSessionPage,
 } from "../types";
 
 export interface AgentApprovalDecision {
@@ -37,13 +38,36 @@ const json = (body: unknown, method = "POST"): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+export interface SessionPageOptions {
+  cursor?: string;
+  query?: string;
+  limit?: number;
+  profileId?: AgentProfileId;
+  context?: AgentContext;
+}
+
 /** Agent MVP HTTP adapters. Pages import from here, not hard-coded URLs. */
 export const agentApi = {
   status: () => request<AgentProviderStatus>("/api/agent/status"),
   listSessions: () => request<AgentSession[]>("/api/agent/sessions"),
+  listSessionPage: (options: SessionPageOptions = {}) => {
+    const params = new URLSearchParams({ limit: String(options.limit ?? 30) });
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.query) params.set("q", options.query);
+    if (options.profileId) params.set("profile_id", options.profileId);
+    if (options.context) {
+      params.set("match_context", "true");
+      for (const [key, value] of Object.entries(options.context)) if (value) params.set(key, value);
+    }
+    return request<AgentSessionPage>(`/api/agent/sessions/page?${params}`);
+  },
   createSession: (title?: string, binding?: { profileId: AgentProfileId; context: AgentContext }) =>
     request<AgentSession>("/api/agent/sessions", json({ title, profile_id: binding?.profileId, context: binding?.context })),
-  getSession: (sessionId: string) => request<AgentSessionDetail>(`/api/agent/sessions/${sessionId}`),
+  getSession: (sessionId: string, options: { beforeSequence?: number } = {}) => {
+    const params = new URLSearchParams({ limit: "50" });
+    if (options.beforeSequence !== undefined) params.set("before_sequence", String(options.beforeSequence));
+    return request<AgentSessionDetail>(`/api/agent/sessions/${sessionId}/timeline?${params}`);
+  },
   updateSession: (sessionId: string, title: string) =>
     request<AgentSession>(`/api/agent/sessions/${sessionId}`, json({ title }, "PATCH")),
   deleteSession: (sessionId: string) => request<void>(`/api/agent/sessions/${sessionId}`, { method: "DELETE" }),
