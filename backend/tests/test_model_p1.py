@@ -11,7 +11,7 @@ import torch
 
 from app.core.models import ModelVersion
 from app.core.models import ModelEvaluationRecord
-from app.models.evaluation import YoloEvaluationRunner, build_evaluation_command, parse_validation_metrics
+from app.models.evaluation import YoloEvaluationRunner, build_evaluation_command, parse_validation_metrics,run_evaluation_process
 from app.models.evaluation_artifacts import EvaluationArtifactManager
 from app.models.inference import ModelCache, run_test_inference
 from app.models.service import ModelService
@@ -72,7 +72,54 @@ def test_evaluation_command_keeps_low_confidence_predictions(tmp_path: Path):
     record = ModelEvaluationRecord(id="eval", model_id="model", dataset_id="dataset", split="val", status="running", confidence=0.25, iou=0.5, result_json={}, data_path=str(tmp_path / "data.yaml"), run_dir=str(tmp_path / "run"))
 
     assert "conf=0.001" in build_evaluation_command(record, model)
+    
+def test_evaluation_process_reads_output_as_utf8(tmp_path: Path, monkeypatch):
+    captured: dict[str, object] = {}
 
+    class FakeProcess:
+        stdout = iter(["all 1 1 0.8 0.7 0.6 0.5\n"])
+
+        def wait(self):
+            return 0
+
+    def fake_popen(command, **kwargs):
+        captured.update(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr("app.models.evaluation.subprocess.Popen", fake_popen)
+
+    model = ModelVersion(
+        id="model",
+        name="model",
+        version="v1",
+        source="training_task",
+        artifact_type="best",
+        format="pt",
+        task_type="detect",
+        engine_type="ultralytics",
+        model_path=str(tmp_path / "best.pt"),
+        status="active",
+        metrics_json={},
+        notes="",
+    )
+    record = ModelEvaluationRecord(
+        id="eval",
+        model_id="model",
+        dataset_id="dataset",
+        split="val",
+        status="running",
+        confidence=0.25,
+        iou=0.5,
+        result_json={},
+        data_path=str(tmp_path / "data.yaml"),
+        run_dir=str(tmp_path / "run"),
+    )
+
+    return_code, _, _ = run_evaluation_process(record, model)
+
+    assert return_code == 0
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace"
 
 def test_error_sample_analyzer_reads_ultralytics_detect_json(tmp_path: Path):
     """Use the pinned Ultralytics runtime itself to produce the detect JSON contract."""
