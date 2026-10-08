@@ -618,3 +618,60 @@ def test_running_training_can_be_stopped(client, tmp_path, monkeypatch):
     assert stopped.status_code == 200, stopped.text
     terminal = wait_for_terminal(client, task_id)
     assert terminal["status"] == "stopped", terminal
+
+def test_training_runner_reads_output_as_utf8(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from app.training.runtime.runner import TrainingRunner
+
+    captured: dict[str, object] = {}
+
+    class FakeQueue:
+        def on_finished(self, task_id):
+            pass
+
+    class FakeProcess:
+        stdout = iter(["training output\n"])
+
+        def wait(self):
+            return 0
+
+    def fake_popen(command, **kwargs):
+        captured.update(kwargs)
+        return FakeProcess()
+
+    runner = TrainingRunner(session_factory=None, queue=FakeQueue())
+
+    task = SimpleNamespace(
+        id="task-utf8",
+        logs_path=str(tmp_path / "train.log"),
+    )
+
+    monkeypatch.setattr(runner, "_claim", lambda task_id: task)
+    monkeypatch.setattr(runner, "_stop_requested", lambda task_id: False)
+    monkeypatch.setattr(runner, "_command", lambda task: ["yolo", "detect", "train"])
+    monkeypatch.setattr(runner, "_update_progress", lambda *args: None)
+    monkeypatch.setattr(runner, "_finish", lambda *args, **kwargs: None)
+
+    monkeypatch.setattr(
+        "app.training.runtime.runner.subprocess.Popen",
+        fake_popen,
+    )
+    monkeypatch.setattr(
+        "app.training.runtime.runner.local_compute_gate.acquire",
+        lambda: nullcontext(),
+    )
+    monkeypatch.setattr(
+        "app.training.runtime.runner.process_registry.register",
+        lambda *args: None,
+    )
+    monkeypatch.setattr(
+        "app.training.runtime.runner.process_registry.unregister",
+        lambda *args: None,
+    )
+
+    runner.run("task-utf8")
+
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace"

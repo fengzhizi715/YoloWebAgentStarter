@@ -41,7 +41,14 @@ def run_evaluation_process(record: ModelEvaluationRecord, model: ModelVersion) -
     command = build_evaluation_command(record, model)
     log_store = TrainingLogStore(record.logs_path or Path(record.run_dir or ".") / "evaluation.log")
     log_store.append("Command: " + " ".join(command))
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=False, bufsize=1)
+    process = subprocess.Popen(command,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+    encoding="utf-8",
+    errors="replace",
+    shell=False,
+    bufsize=1)
     assert process.stdout is not None
     lines: list[str] = []
     for line in process.stdout:
