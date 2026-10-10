@@ -2,7 +2,7 @@
 
 [中文 README](README.md)
 
-The community edition of YoloWebAgent: a local, single-user YOLO dataset workspace for a lightweight end-to-end workflow covering image/video-frame import, manual annotation, data validation, YOLO/COCO exchange, local training, native YOLO evaluation, and managed model artifacts.
+The community edition of YoloWebAgent: a local, single-user YOLO dataset workspace for a lightweight end-to-end workflow covering image/video-frame import, manual annotation, data validation, YOLO/COCO exchange, local training, native YOLO evaluation, and managed model artifacts, with an assistant grounded in tool evidence.
 
 ```text
 Images → Dataset → Annotations → Validation → YOLO Import / Export → Local Training → Managed PT → Split Evaluation / FP32 ONNX
@@ -19,7 +19,8 @@ Images → Dataset → Annotations → Validation → YOLO Import / Export → L
 - Admit only managed `best.pt`, `last.pt`, and static FP32 ONNX training artifacts into the model library.
 - Run upstream-compatible Ultralytics `val` in the background for managed PT models, retaining native metrics, logs, charts, and up to 200 reviewable error samples.
 - Start local auto-annotation jobs from a dataset card: by default, existing annotations are skipped; select a compatible managed PT model, explicitly confirm class mapping, adjust confidence/IoU, optionally clear old annotations, monitor progress, and cancel when needed. Training and auto-annotation are mutually exclusive on the same machine. Results are retained with the `auto` source and must be manually reviewed before training.
-- Agent MVP: ask read-only questions about datasets, training, and models, and produce reports grounded in tool results; write actions submit existing managed jobs only after explicit human confirmation, with no automatic follow-on chaining.
+- Agent MVP: four built-in assistant profiles for general, dataset, training, and model questions, with readiness, failure-diagnosis, and model-comparability reports. Write actions submit existing managed jobs after human confirmation. Sessions retain object bindings; runs support asynchronous progress, cancellation, and retries with their original mode and permissions. See the [Agent guide](docs/agent.md).
+- Load long conversations on demand, search sessions, inspect per-turn evidence and approval records, and see new-reply notifications while reading history.
 - Bind to `127.0.0.1` by default; data, database, exports, and training files stay local.
 
 ## Features at a glance
@@ -31,11 +32,11 @@ Images → Dataset → Annotations → Validation → YOLO Import / Export → L
 | SAM | Box/point segmentation suggestions; when no model is configured, only clearly identified review-only box suggestions are available |
 | Data exchange | YOLO detect / segment / OBB ZIP import and export; YOLO classify directory-layout import and export; detect/segment COCO ZIP import and export |
 | Training | Local FIFO queue, CPU/MPS/single CUDA GPU/local multi-GPU DDP, logs, progress, stop controls, resume interrupted jobs or create continuation jobs from managed `last.pt`, metric summaries/trends, configuration snapshots, and best/last checkpoints |
-| Settings and logs | SAM settings, language settings, and local runtime-log viewing and filtering |
+| Settings and logs | SAM settings, Agent LLM configuration and connection testing, language settings, and local runtime-log viewing and filtering |
 | Evaluation | Background native YOLO `val`, persisted splits, job state and recovery, logs, confusion matrices, available PR curves, and up to 200 error samples; segment retains separate box/mask metrics and curves |
 | Models | Managed PT downloads from training artifacts, persisted image quick tests, same-dataset model comparisons, reviewable pre-annotations, auto-annotation jobs/logs, and deduplicated FP32 ONNX exports |
 | Data quality | Annotation coverage, class distribution, small-object, overlapping-bbox, and class-imbalance hints |
-| Agent MVP | Read-only assistant for dataset/training/model Q&A and reports; human-confirmed submission of existing training, evaluation, and auto-annotation jobs; persisted sessions and run records; LLM settings match the Settings UI (`settings.json`, never SQLite) with environment defaults; secrets are redacted from logs |
+| Agent MVP | Four built-in profiles, object-bound sessions, read-only Q&A and diagnostic reports; human-confirmed training/evaluation/auto-annotation jobs; asynchronous runs, cancellation, retries, per-turn evidence and inference provenance; paginated sessions/messages and server-side session search; LLM settings in `settings.json`, run records in SQLite, and redacted credentials and sensitive parameters in logs |
 | Security boundary | Managed storage root, import-directory boundary, ZIP resource-exhaustion limits, and localhost binding by default; Agent write actions require confirmation and forbid arbitrary paths, external PT, or shell commands |
 
 ### Supported tasks
@@ -93,6 +94,36 @@ For more detailed instructions, SAM guidance, and troubleshooting, see the [five
 ./.venv/bin/python scripts/create_tiny_demo.py /tmp/ywa-tiny-demo
 ```
 
+## Using the assistant
+
+Open Agent from the sidebar for general questions, or use the assistant action on a dataset card, training page, or model page to include the corresponding object. Four built-in Agent Profiles share the LLM configuration and executor, with profile-specific tools.
+
+| Profile | Example question | Jobs it can propose (human confirmation required) |
+|---|---|---|
+| General assistant | “Which datasets, training jobs, and models are available?” | Training, evaluation, auto-annotation |
+| Dataset assistant | “Is this dataset ready for training?” | Training, auto-annotation |
+| Training assistant | “Why did this training job fail?” | Training, evaluation |
+| Model assistant | “Can these two models be compared directly?” | Evaluation, auto-annotation |
+
+### Configuration and questions
+
+1. The default local Mock / rule planner needs no API key. It supports tool queries, reports, and the human-confirmation flow. Select “Read-only” below the input, or use a quick prompt, for queries without write proposals.
+2. To use an LLM, open Settings → Agent LLM, enable the provider, enter the API Base URL, model, and any required authentication, then test the connection and save. The current adapter uses a Chat Completions compatible interface; Agent tools require a model and service that support tool calling.
+3. Select a profile and object, then ask a question. `Ctrl / ⌘ + Enter` sends the message. Changing the profile or object in an existing conversation requires starting a new chat or explicitly continuing that conversation.
+4. For job requests, review the object, parameters, and expected outputs in the approval card. The domain job is submitted only after confirmation, which ends the Agent turn.
+5. Inspect asynchronous progress, tool evidence, and inference provenance. Failed or cancelled runs can be retried with their original profile, object, and read-only permission. Submitted jobs are controlled from their respective job pages.
+
+Disabling the LLM returns to local rule planning. When using an external LLM service, questions, object context, and tool results used to answer are sent to that configured service. A connection test does not verify the complete business or tool-calling flow.
+
+### Sessions and history
+
+- Sessions load in pages of 30. Server-side search covers all session titles and bound object IDs; it does not search message bodies or switch the current conversation.
+- Opening a conversation loads the latest 50 non-tool messages. “Load earlier messages” preserves the reading position. Each turn provides expandable tool results, inference records, and approval status; historical approvals are display-only.
+- Only the current run is polled each second. New replies do not force a jump while reading history; “New reply · Jump to latest” resumes following the conversation.
+- Full history stays in the database, while model context has a length budget. Pagination does not give the LLM unlimited memory. Automatic summaries and list virtualization are not implemented; repeatedly loading older pages accumulates rendered messages.
+
+Model-comparability reports check dataset, task, evaluation split, and thresholds. Evaluation records currently lack a verifiable dataset snapshot fingerprint, so matching metrics alone cannot establish a reliable ranking or model replacement. See the [Agent guide](docs/agent.md) for capabilities, history budgets, and API contracts.
+
 ## Device support
 
 Ultralytics resolves training devices locally:
@@ -120,16 +151,32 @@ All runtime data defaults to the Git-ignored `./data/` directory: the SQLite dat
 | `YWA_SAM_MODEL` | Unset | Local or named checkpoint enabling real Ultralytics SAM box/point prompts |
 | `YWA_SAM_DEVICE` | `auto` | SAM device request, such as `mps` or `cpu` |
 | `YWA_SAM_IMGSZ` | `1024` | SAM inference size; values saved in Settings override the environment default |
+| `YWA_AGENT_PROVIDER` | `mock` | Default Agent provider; use `openai-compatible` for a real LLM |
+| `YWA_AGENT_BASE_URL` | Unset | Default LLM API Base URL |
+| `YWA_AGENT_MODEL` | `mock-model` | Default model; specify a model available from your service when enabling an LLM |
+| `YWA_AGENT_API_KEY` | Unset | Default LLM credential; whether one is required depends on the service |
+| `YWA_AGENT_MAX_TOOL_ROUNDS` | `8` | Maximum tool-inference rounds per run |
+| `YWA_AGENT_APPROVAL_TTL_SECONDS` | `3600` | Approval validity period in seconds |
 
 SAM and Agent LLM settings are stored in `YWA_DATA_DIR/settings.json` (API keys never appear in GET responses and are never written to SQLite); environment variables provide defaults. Language preference is stored only in browser localStorage. Runtime logs are saved in `YWA_DATA_DIR/logs/backend.log`, rotate at 2 MiB, and retain three backups. The log page combines the latest lines from retained files.
 
 Before writing untrusted YOLO ZIP files, the application checks for at most 2,000 members, 100 MiB per member, 250 MiB total extracted size, and a 100:1 compression ratio. Images are streamed member by member into managed storage. Directory scans reject paths outside the import root and escaping symlinks.
 
+## Updating an existing installation
+
+Stop both services and back up `YWA_DATA_DIR`, including the database, `settings.json`, and managed files, before updating the code. After updating, run from the repository root:
+
+```bash
+.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+npm --prefix frontend install
+./run-all.sh
+```
+
+Normal backend startup applies pending Alembic migrations automatically. Agent history pagination uses composite indexes added by `0019_agent_history_indexes`, preserving existing records. Restart the backend after updating the frontend so the new routes and migration take effect. Unfinished Agent inference runs are marked failed after a restart and require a manual retry.
+
 ## Security and runtime boundary
 
 This is local, single-user software. It does not provide authentication, authorization, TLS, or multi-tenant isolation. Do not bind the service to `0.0.0.0`, forward its ports, or place it directly behind a public reverse proxy.
-
-The security-reporting process is also a public-release blocker. Read [SECURITY.md](SECURITY.md); see [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for all pre-release checks.
 
 ## Evaluation implementation and artifacts
 
@@ -157,9 +204,9 @@ At runtime, Starter never imports, reads, or depends on the YoloWebAgent/Enterpr
 
 ```text
 backend/app/       FastAPI, domain services, SQLite/Alembic, local training queue, and evaluation runner
-frontend/src/      React annotation workspace, training, model management, and evaluation-details UI
+frontend/src/      React annotation workspace, training, model management, evaluation details, and Agent UI
 scripts/           Tiny-dataset, four-task CPU-training/segment-val smoke-test, and release-gate scripts
-docs/              Quick start, dependency audit, and source/provenance materials
+docs/              Quick start, Agent guide, dependency audit, and source/provenance materials
 data/              Default runtime directory (ignored; do not commit)
 ```
 
@@ -177,6 +224,8 @@ PYTHONPATH=backend .venv/bin/python scripts/run_cpu_smoke.py
 ```
 
 The standard tests directly invoke the Ultralytics 8.4.115 detect, segment, and OBB validators to generate the real JSON contract, then validate it with the error-sample analyzer. The CPU smoke test actually runs one tiny training epoch for all four tasks, reuses upstream native parameters to run segment `val(save_json=True, plots=True)`, and verifies eight box/mask metrics, pycocotools RLE, the confusion matrix, prediction JSON, and detect ONNX export. The smoke test uses temporary directories and retains neither models nor datasets. The first run may wait for the Matplotlib font cache and ONNX export.
+
+Agent automated tests use the Mock Provider and require no real LLM API key. They cover tool policies, object binding, human approvals, run recovery, and history pagination. Real-provider connectivity and model tool-calling support require separate verification.
 
 Tiny offline random models are not guaranteed to produce valid true positives, so the CPU smoke test does not require PR curves. The Ultralytics 8.4.115 naming contract for `BoxPR_curve.png` / `MaskPR_curve.png` is covered by focused tests. See [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md) for details.
 

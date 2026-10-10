@@ -2,7 +2,7 @@
 
 [English README](README.en.md)
 
-YoloWebAgent的社区版，面向本地单用户的 YOLO 数据集工作台：完成图片/视频帧导入、人工标注、数据校验、YOLO/COCO 交换、本地训练、原生 YOLO 评估和受管模型产物的一条轻量闭环。
+YoloWebAgent 的社区版，面向本地单用户的 YOLO 数据集工作台：完成图片/视频帧导入、人工标注、数据校验、YOLO/COCO 交换、本地训练、原生 YOLO 评估和受管模型产物的一条轻量闭环，并提供基于工具证据的智能助手。
 
 ```text
 图片 → 数据集 → 标注 → 校验 → YOLO 导入 / 导出 → 本地训练 → 受管 PT → split 评估 / FP32 ONNX
@@ -20,6 +20,7 @@ YoloWebAgent的社区版，面向本地单用户的 YOLO 数据集工作台：�
 - 对受管 PT 后台运行上游同款 Ultralytics `val`，保存原生指标、日志、图表和最多 200 个可审阅错误样本。
 - 从数据集卡片启动本地自动标注任务：默认跳过已有标注的图片，选择匹配的受管 PT、显式确认类别映射、调整置信度/IoU、可选清理旧标注，实时查看进度并取消；训练与自动标注在本机互斥执行，结果保留为 `auto` 来源，必须人工审核后再训练。
 - Agent MVP：内置综合、数据集、训练、模型四种助手模式，共享执行器；提供训练准备、失败诊断与模型可比性报告。写操作须人工确认后才提交现有受管任务，不自动串联下一步。支持对象绑定会话、异步进度、取消及保留原模式与权限的重试，见 [Agent 运行说明](docs/agent.md)。
+- 长对话按需加载，支持会话搜索、逐轮查看工具证据与审批记录，以及阅读历史时的新回复提示。
 - 默认只监听 `127.0.0.1`，数据、数据库、导出和训练文件均保留在本机。
 
 ## 功能一览
@@ -31,11 +32,11 @@ YoloWebAgent的社区版，面向本地单用户的 YOLO 数据集工作台：�
 | SAM | segment 的框选/点选建议；未配置模型时仅提供明确标识的 review-only 框形建议 |
 | 数据交换 | YOLO detect / segment / OBB ZIP 导入与导出；YOLO classify 目录布局导入与导出；detect/segment COCO ZIP 导入与导出 |
 | 训练 | 本地 FIFO 队列、CPU/MPS/CUDA 单 GPU 或本地多 GPU DDP、日志、进度、停止控制、恢复中断任务或从受管 `last.pt` 创建继续训练任务、指标摘要/趋势、配置快照和 best/last checkpoint |
-| 设置与日志 | SAM 设置、语言设置、本地运行日志查看与筛选 |
+| 设置与日志 | SAM 设置、Agent LLM 配置与连接测试、语言设置、本地运行日志查看与筛选 |
 | 评估 | 后台原生 YOLO `val`、持久化 split、任务状态与恢复、日志、混淆矩阵、可用 PR 曲线和最多 200 个错误样本；segment 分别保留 box/mask 指标与曲线 |
 | 模型 | 训练产物的受管 PT 下载、持久化图片快速测试、同数据集模型比较、可审阅预标注、自动标注任务/日志、去重 FP32 ONNX 导出 |
 | 数据质量 | 标注覆盖率、类别分布、小目标、重叠 bbox 和类别失衡提示 |
-| Agent MVP | 只读智能助手（数据集/训练/模型问答与报告）；经人工确认后提交训练、评估、自动标注等现有任务；会话与运行记录可持久化；LLM 可在设置页配置（写入 `settings.json`，不进 SQLite），环境变量作默认；日志对 API Key/敏感工具参数脱敏 |
+| Agent MVP | 四种内置助手模式、对象绑定会话、只读问答与诊断报告；人工确认后提交训练/评估/自动标注任务；异步运行、取消、重试、逐轮证据与推理来源；会话和消息分页、服务端会话搜索；LLM 设置保存到 `settings.json`，运行记录保存到 SQLite，日志对凭据和敏感参数脱敏 |
 | 安全边界 | 受管存储根目录、导入目录边界、ZIP 防资源耗尽限制、默认 localhost 绑定；Agent 写操作须确认且禁止任意路径/外部 PT/Shell |
 
 ### 任务支持
@@ -93,6 +94,36 @@ npm --prefix frontend install
 ./.venv/bin/python scripts/create_tiny_demo.py /tmp/ywa-tiny-demo
 ```
 
+## 使用智能助手
+
+从侧栏“智能体”进入综合助手，也可从数据集卡片、训练或模型页面的“询问助手”进入，自动携带对应对象。页面提供四种内置 Agent Profiles；它们共享 LLM 配置和执行器，各自限定可用工具。
+
+| 助手模式 | 典型问题 | 可申请的任务（均需人工确认） |
+|---|---|---|
+| 综合助手 | “有哪些数据集、训练和模型？” | 训练、评估、自动标注 |
+| 数据集助手 | “这个数据集适合开始训练吗？” | 训练、自动标注 |
+| 训练助手 | “这个训练为什么失败？” | 训练、评估 |
+| 模型助手 | “这两个模型可以直接比较吗？” | 评估、自动标注 |
+
+### 配置与提问
+
+1. 默认使用本地 Mock / 规则规划，无需密钥即可体验工具查询、报告和人工确认流程。要确保只做查询，勾选输入框下方的“仅查询”，或使用快捷提问。
+2. 使用真实 LLM 时，打开“设置 → Agent LLM”，启用 Provider，填写 API Base URL、模型与服务所需的认证信息，测试连接后保存。当前使用 Chat Completions 兼容接口；智能体工具调用需要模型和服务支持工具调用协议。
+3. 选择助手模式和对象后输入问题，支持 `Ctrl / ⌘ + Enter` 发送。已有会话改变模式或对象时，页面要求选择新建会话或明确继续当前会话。
+4. 请求创建任务时，先检查待确认卡片中的对象、参数和预期产物；只有点击“确认执行”后才提交领域任务，提交后本轮结束。
+5. 查看异步运行状态、工具证据和推理来源；失败或取消的运行可重试，沿用原运行的模式、对象及只读权限。已提交任务的停止控制位于对应任务页面。
+
+关闭 LLM 后可继续使用本地规则模式。启用外部 LLM 服务时，问题、对象上下文和用于回答的工具结果会发送给所配置的服务。连接测试结果不等于模型已通过完整业务与工具调用测试。
+
+### 会话与历史
+
+- 会话列表每页 30 条，可继续加载；服务端搜索覆盖所有会话的标题和绑定对象 ID，不搜索消息正文，也不会切换当前会话。
+- 打开会话默认加载最近 50 条非工具消息；“加载更早消息”向前翻页并保持阅读位置。每轮可展开工具结果、推理记录和审批状态，历史审批只展示记录。
+- 运行中每秒只刷新当前运行；阅读历史时不会强制跳到底部，可通过“有新回复 · 回到最新”恢复跟随。
+- 完整历史保存在数据库中，但模型上下文有长度预算。分页不会让 LLM 自动记住全部历史；当前没有自动摘要或虚拟列表，手动持续加载后页面消息仍会累积。
+
+模型可比性报告会检查数据集、任务、评估 split 和阈值；当前缺少可核验的数据快照指纹，因此不能仅凭指标一致就认定两个模型可直接排名或替换。完整能力、历史预算和 API 合约见 [Agent 运行说明](docs/agent.md)。
+
 ## 设备支持
 
 训练设备由 Ultralytics 在本机解析：
@@ -122,8 +153,14 @@ npm --prefix frontend install
 | `YWA_SAM_MODEL` | 未设置 | 启用真实 Ultralytics SAM 框/点提示的本地或命名检查点 |
 | `YWA_SAM_DEVICE` | `auto` | SAM 设备请求，例如 `mps` 或 `cpu` |
 | `YWA_SAM_IMGSZ` | `1024` | SAM 推理尺寸；设置页保存的值优先于环境默认值 |
+| `YWA_AGENT_PROVIDER` | `mock` | Agent Provider 默认值；真实 LLM 可使用 `openai-compatible` |
+| `YWA_AGENT_BASE_URL` | 未设置 | LLM API Base URL 默认值 |
+| `YWA_AGENT_MODEL` | `mock-model` | 模型默认值；启用真实 LLM 时须指定服务提供的模型 |
+| `YWA_AGENT_API_KEY` | 未设置 | LLM 认证密钥默认值；是否需要取决于服务 |
+| `YWA_AGENT_MAX_TOOL_ROUNDS` | `8` | 每次运行的最大工具推理轮数 |
+| `YWA_AGENT_APPROVAL_TTL_SECONDS` | `3600` | 待确认操作的有效时间（秒） |
 
-设置页的 SAM 配置保存在 `YWA_DATA_DIR/settings.json`，语言偏好只保存在浏览器 localStorage；运行日志保存在 `YWA_DATA_DIR/logs/backend.log`，按 2 MiB 轮转并保留 3 个备份，日志页会合并展示保留文件中的最新行。
+设置页的 SAM 和 Agent LLM 配置保存在 `YWA_DATA_DIR/settings.json`，环境变量提供默认值；LLM 密钥不写入 SQLite，也不通过设置读取接口返回明文。语言偏好只保存在浏览器 localStorage；运行日志保存在 `YWA_DATA_DIR/logs/backend.log`，按 2 MiB 轮转并保留 3 个备份，日志页会合并展示保留文件中的最新行。
 
 不可信 YOLO ZIP 在写入前会检查最多 2,000 个成员、单成员 100 MiB、总解压量 250 MiB 和 100:1 压缩比；图片逐成员流式写入受管目录。目录扫描会拒绝导入根目录外路径和逃逸的软链接。
 
@@ -135,11 +172,21 @@ npm --prefix frontend install
 
 已提交的帧会写入检查点。服务重启时，已确认启动的运行中任务会从下一帧自动恢复；如果其部分生成的数据集已被手动删除，任务会失败，用户可选择重试并从头开始。
 
+## 更新已有安装
+
+更新代码前先停止前后端，并备份 `YWA_DATA_DIR`（包含数据库、`settings.json` 和受管文件）。更新代码后，在仓库根目录执行：
+
+```bash
+.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+npm --prefix frontend install
+./run-all.sh
+```
+
+正常启动后端会自动执行尚未应用的 Alembic migration。智能体历史分页使用 `0019_agent_history_indexes` 新增的复合索引，不删除历史记录；更新前端后也需重启后端，使新路由和迁移生效。重启前仍未完成的智能体推理会标记为失败，需要人工重试。
+
 ## 安全与运行边界
 
 这是本地单用户软件，不提供认证、授权、TLS 或多租户隔离。请不要将服务绑定到 `0.0.0.0`、转发端口或直接放到公网反向代理之后。
-
-安全报告流程目前也是公开发布的阻断项；请阅读 [SECURITY.md](SECURITY.md)。发布前的全部检查见 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)。
 
 ## 评估实现与产物
 
@@ -167,9 +214,9 @@ Starter 运行时不会 import、读取或依赖 YoloWebAgent/Enterprise 仓库�
 
 ```text
 backend/app/       FastAPI、领域服务、SQLite/Alembic、本地训练队列和评估 runner
-frontend/src/      React 标注工作台、训练、模型管理和评估详情界面
+frontend/src/      React 标注工作台、训练、模型管理、评估详情和智能体界面
 scripts/           微型数据集、四任务 CPU 训练/segment-val 烟雾测试和发布门槛脚本
-docs/              快速开始、依赖审计和来源授权材料
+docs/              快速开始、智能体运行说明、依赖审计和来源授权材料
 data/              默认运行时目录（忽略，不提交）
 ```
 
@@ -187,6 +234,8 @@ PYTHONPATH=backend .venv/bin/python scripts/run_cpu_smoke.py
 ```
 
 标准测试会直接调用 Ultralytics 8.4.115 的 detect、segment、OBB validator 生成真实 JSON 合约，再交给错误样本分析器验证。CPU 冒烟会实际运行四任务的一轮微型训练，复用上游原生参数执行 segment `val(save_json=True, plots=True)`，并校验 box/mask 八项指标、pycocotools RLE、混淆矩阵、预测 JSON 和 detect ONNX 导出。整个冒烟使用临时目录且不保留模型或数据集；首次运行可能需要等待 Matplotlib 字体缓存和 ONNX 导出。
+
+智能体自动化测试使用 Mock Provider，无需配置真实 LLM 密钥，覆盖工具策略、对象绑定、人工确认、运行恢复及历史分页；真实 Provider 的网络连接和模型工具调用能力需另外验证。
 
 极小的离线随机模型不保证产生有效 TP，因此 CPU 冒烟不强制要求 PR 曲线存在；`BoxPR_curve.png` / `MaskPR_curve.png` 的 Ultralytics 8.4.115 命名契约由聚焦测试覆盖。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [CHANGELOG.md](CHANGELOG.md)。
 
