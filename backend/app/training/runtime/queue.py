@@ -66,7 +66,12 @@ class TrainingQueue:
             self._active_task_id = next_id
         from app.training.runtime.runner import TrainingRunner
 
-        threading.Thread(target=TrainingRunner(session_factory, self, self._storage).run, args=(next_id,), daemon=True).start()
+        threading.Thread(
+            target=TrainingRunner(session_factory, self, self._storage).run,
+            args=(next_id,),
+            name=f"ywa-training-{next_id}",
+            daemon=True,
+        ).start()
 
 
 training_queue = TrainingQueue()

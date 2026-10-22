@@ -68,6 +68,7 @@ class AutoAnnotationQueue:
         threading.Thread(
             target=AutoAnnotationRunner(session_factory, self, self._storage).run,
             args=(next_id,),
+            name=f"ywa-auto-annotation-{next_id}",
             daemon=True,
         ).start()
 

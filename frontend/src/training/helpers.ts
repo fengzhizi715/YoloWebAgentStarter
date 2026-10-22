@@ -12,7 +12,7 @@ export const PRESETS: Record<PresetId, { epochs: number; batch_size: number; img
 };
 
 export const BATCH_OPTIONS = [1, 2, 4, 8, 16, 32, 64];
-export const IMG_SIZE_OPTIONS = [320, 416, 512, 640, 768, 896, 1024];
+export const IMG_SIZE_OPTIONS = [256, 320, 416, 512, 640, 768, 896, 1024];
 
 export interface TrainingFormState {
   name: string;
