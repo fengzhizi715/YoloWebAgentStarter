@@ -6,6 +6,8 @@ YoloWebAgentStarter is a local, single-user YOLO dataset workspace for a lightwe
 
 A commercial edition is also available. For details, use the contact information below; the official website link will be added later.
 
+![AI Vision Product Matrix: YoloWebAgentStarter, VisionAgent, and UniversalVision AI](docs/assets/ai-vision-product-matrix.png)
+
 ## Why use it
 
 - Prepare and annotate `detect`, `segment`, `obb`, and `classify` datasets entirely on your machine.

@@ -6,6 +6,8 @@ YoloWebAgentStarter 是面向本地单用户的 YOLO 数据集工作台：完成
 
 另提供商业版本，详情可通过文末联系方式咨询，官网链接将于后续补充。
 
+![AI 视觉产品生态矩阵：YoloWebAgentStarter、VisionAgent 与 UniversalVision AI](docs/assets/ai-vision-product-matrix.png)
+
 ## 为什么使用它
 
 - 在本机完成 detect、segment、OBB 和 classify 数据集的标注与训练准备。
